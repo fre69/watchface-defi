@@ -1,0 +1,41 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.defi.watchface'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.defi.watchface.distance"
+        minSdk 33
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+    }
+
+    buildTypes {
+        debug {
+            minifyEnabled false
+        }
+        release {
+            minifyEnabled false
+            shrinkResources false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    // API Watch Face officielle (Java-friendly via Guava)
+    implementation 'androidx.wear.watchface:watchface:1.2.1'
+    implementation 'androidx.wear.watchface:watchface-guava:1.2.1'
+    implementation 'androidx.wear.watchface:watchface-complications-data-source:1.2.1'
+
+    // Guava pour ListenableFuture
+    implementation 'com.google.guava:guava:31.1-android'
+}
