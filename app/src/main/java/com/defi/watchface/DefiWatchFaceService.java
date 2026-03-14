@@ -57,7 +57,7 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
     public static final int COMPL_WEATHER  = 103;
     public static final int COMPL_BATTERY  = 104;
     public static final int COMPL_TEMP     = 105;
-    public static final int COMPL_ACTIVITY = 106;
+    public static final int COMPL_UV       = 106;
 
     // --- Fournisseurs OHealth OnePlus ---
     private static final ComponentName OHEALTH_STEPS = new ComponentName(
@@ -75,9 +75,9 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
     private static final ComponentName OHEALTH_TEMP = new ComponentName(
             "com.heytap.wearable.weather",
             "com.heytap.wearable.weather.complication.wearos.TemperatureProviderService");
-    private static final ComponentName OHEALTH_ACTIVITY = new ComponentName(
-            "com.heytap.wearable.health",
-            "com.heytap.wearable.health.complication.wearos.DailyActivityComplicationService");
+    private static final ComponentName OHEALTH_UV = new ComponentName(
+            "com.heytap.wearable.weather",
+            "com.heytap.wearable.weather.complication.wearos.UVIndexProviderService");
 
     @NonNull
     @Override
@@ -114,12 +114,12 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         // Température
         slots.add(createSlot(COMPL_TEMP, OHEALTH_TEMP,
                 SystemDataSources.DATA_SOURCE_DAY_OF_WEEK,
-                0.5f, 0.58f, 0.9f, 0.68f));
+                0.3f, 0.58f, 0.7f, 0.68f));
 
-        // Activité quotidienne (sommeil, distance, etc.)
-        slots.add(createSlot(COMPL_ACTIVITY, OHEALTH_ACTIVITY,
-                SystemDataSources.DATA_SOURCE_STEP_COUNT,
-                0.1f, 0.28f, 0.9f, 0.35f));
+        // Indice UV
+        slots.add(createSlot(COMPL_UV, OHEALTH_UV,
+                SystemDataSources.DATA_SOURCE_DAY_OF_WEEK,
+                0.6f, 0.58f, 0.9f, 0.68f));
 
         // Batterie
         slots.add(ComplicationSlot.createRoundRectComplicationSlotBuilder(
@@ -291,7 +291,7 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             int hr = readInt(COMPL_HR);
             String weatherTxt = readText(COMPL_WEATHER);
             String tempTxt = readText(COMPL_TEMP);
-            String activityTxt = readText(COMPL_ACTIVITY);
+            String uvTxt = readText(COMPL_UV);
             int battPct = batteryMgr.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY);
 
             if (ambient) {
@@ -301,9 +301,9 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
                 c.drawColor(COL_BG);
                 drawArcs(c, steps, cals);
                 drawStepsCal(c, steps, cals);
-                drawHealth(c, hr, activityTxt);
+                drawHealth(c, hr);
                 drawTime(c, zdt);
-                drawInfo(c, zdt, weatherTxt, tempTxt);
+                drawWeather(c, tempTxt, weatherTxt, uvTxt, zdt);
                 drawDate(c, zdt);
                 drawBattery(c, battPct);
             }
@@ -399,20 +399,10 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             c.drawText("/" + CAL_GOAL, rx, yGoal, pGoal);
         }
 
-        // --- FC + activité ---
-        private void drawHealth(Canvas c, int hr, String activity) {
+        // --- FC ---
+        private void drawHealth(Canvas c, int hr) {
             String hrTxt = hr > 0 ? ("\u2665 " + hr + " bpm") : "\u2665 -- bpm";
-            if (activity != null && !activity.isEmpty()) {
-                // FC à gauche, activité à droite
-                float spread = W * 0.16f;
-                c.drawText(hrTxt, CX - spread, y(0.30f), pHealth);
-                c.drawLine(CX, y(0.29f), CX, y(0.32f), pSep);
-                pInfo.setColor(COL_HEALTH);
-                c.drawText(activity, CX + spread, y(0.30f), pInfo);
-                pInfo.setColor(COL_VIOLET); // reset
-            } else {
-                c.drawText(hrTxt, CX, y(0.30f), pHealth);
-            }
+            c.drawText(hrTxt, CX, y(0.30f), pHealth);
         }
 
         // --- HEURE ---
@@ -425,21 +415,35 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             c.drawText(ss, CX - 18 + hw + 3, timeY, pTimeSec);
         }
 
-        // --- INFO (météo + température + lune + semaine) ---
-        private void drawInfo(Canvas c, ZonedDateTime z, String weather, String temp) {
+        // --- MÉTÉO (Temp° | Conditions | UV) comme le mockup ---
+        private void drawWeather(Canvas c, String temp, String weather, String uv, ZonedDateTime z) {
             float infoY = y(0.635f);
-            boolean hasWeather = weather != null && !weather.isEmpty();
             boolean hasTemp = temp != null && !temp.isEmpty();
+            boolean hasWeather = weather != null && !weather.isEmpty();
+            boolean hasUv = uv != null && !uv.isEmpty();
 
-            if (hasWeather || hasTemp) {
-                // Afficher météo à gauche, température à droite
-                float spread = W * 0.16f;
-                if (hasWeather) c.drawText(weather, CX - spread, infoY, pInfo);
-                if (hasWeather && hasTemp)
-                    c.drawLine(CX, infoY - 10, CX, infoY + 5, pSep);
-                if (hasTemp) c.drawText(temp, hasWeather ? CX + spread : CX, infoY, pInfo);
+            if (hasTemp || hasWeather || hasUv) {
+                // Layout 3 colonnes : Temp | Météo | UV
+                float col1 = CX - W * 0.20f;
+                float col2 = CX;
+                float col3 = CX + W * 0.20f;
+
+                if (hasTemp) c.drawText(temp, col1, infoY, pInfo);
+
+                if (hasTemp && (hasWeather || hasUv))
+                    c.drawLine(CX - W * 0.10f, infoY - 10, CX - W * 0.10f, infoY + 5, pSep);
+
+                if (hasWeather) c.drawText(weather, col2, infoY, pInfo);
+
+                if ((hasTemp || hasWeather) && hasUv)
+                    c.drawLine(CX + W * 0.10f, infoY - 10, CX + W * 0.10f, infoY + 5, pSep);
+
+                if (hasUv) {
+                    String uvLabel = uv.toLowerCase().contains("uv") ? uv : "UV " + uv;
+                    c.drawText(uvLabel, col3, infoY, pInfo);
+                }
             } else {
-                // Fallback : lune + semaine
+                // Fallback : lune + semaine (pas de météo disponible)
                 float spread = W * 0.14f;
                 c.drawText(moonPhase(), CX - spread, infoY, pInfo);
                 c.drawLine(CX, infoY - 10, CX, infoY + 5, pSep);
