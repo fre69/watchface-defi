@@ -3,6 +3,19 @@
 
     <uses-feature android:name="android.hardware.type.watch" />
 
+    <!-- Permission pour recevoir les données des complications Wear OS -->
+    <uses-permission android:name="com.google.android.wearable.permission.RECEIVE_COMPLICATION_DATA" />
+
+    <!-- Permissions pour accéder aux données santé -->
+    <uses-permission android:name="android.permission.BODY_SENSORS" />
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+
+    <!-- Visibilité des packages OHealth (requis Android 11+) -->
+    <queries>
+        <package android:name="com.heytap.wearable.health" />
+        <package android:name="com.heytap.wearable.weather" />
+    </queries>
+
     <application
         android:label="myPersonnalCadran"
         android:icon="@drawable/ic_launcher">

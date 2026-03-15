@@ -46,7 +46,7 @@ d'obtenir des données cohérentes avec OHealth.
 | Météo/Info | Violet | `#AA88FF` |
 | Date | Gris | `#AAAAAA` |
 | Batterie | Bleu | `#66BBFF` |
-| Fond | Noir | `#0B0B12` |
+| Fond | Noir pur OLED | `#000000` |
 | Séparateurs | Gris foncé | `#2A2A35` |
 
 ## Build & Deploy
@@ -74,9 +74,12 @@ adb exec-out screencap -p > screenshot.png
 - **Gradle** : 8.4
 - **AGP** : 8.2.0
 
+## Problèmes résolus
+- **Calories + Météo** : Résolu en ajoutant `<queries>` (visibilité packages Android 11+)
+  et la permission `RECEIVE_COMPLICATION_DATA` dans le manifest. Les données remontent
+  maintenant correctement via les ComplicationProviders OHealth.
+
 ## Problèmes connus
-- **Calories** : Le `CaloriesComplicationService` OHealth ne répond pas (ni SHORT_TEXT ni RANGED_VALUE). Peut nécessiter un format différent ou une mise à jour OHealth.
-- **Météo** : Le `WeatherProviderService` ne renvoie pas encore de données (à tester en extérieur/avec connexion).
 - **Sommeil/Stress** : Pas de ComplicationProvider dédié trouvé sur la montre. `DailyActivityComplicationService` renvoie les pas au lieu de l'activité complète.
 
 ## Historique des tentatives

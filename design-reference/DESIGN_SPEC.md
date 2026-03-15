@@ -17,7 +17,7 @@
 | Météo       | Violet    | #AA88FF  | Température, Pluie%, UV        |
 | Calendrier  | Gris clair| #AAAAAA  | Jours semaine, jour du mois    |
 | Batterie    | Bleu      | #66BBFF  | Jauge + pourcentage            |
-| Fond        | Noir deep | #0B0B12  | Background                     |
+| Fond        | Noir pur  | #000000  | Background (OLED true black)   |
 | Séparateurs | Gris foncé| #2A2A35  | Lignes verticales entre items  |
 
 ## Layout (de haut en bas)
