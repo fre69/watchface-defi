@@ -333,7 +333,6 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
                 drawStepsCal(c, steps, cals);
                 drawHealth(c, hr);
                 drawTime(c, zdt);
-                drawWeather(c, null, null, null);
                 drawInfoLine(c, zdt);
                 drawDate(c, zdt);
                 drawBattery(c, battPct);
@@ -468,14 +467,34 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             try {
                 if (data instanceof ShortTextComplicationData) {
                     ShortTextComplicationData st = (ShortTextComplicationData) data;
-                    if (st.getMonochromaticImage() != null) {
-                        Icon icon = st.getMonochromaticImage().getImage();
+                    // Log diagnostic pour identifier les conditions météo
+                    CharSequence txt = st.getText().getTextAt(getResources(), java.time.Instant.now());
+                    Log.d(TAG, "readIcon slot " + slotId + " text=" + txt
+                            + " hasSmallImage=" + (st.getSmallImage() != null)
+                            + " hasMonoImage=" + (st.getMonochromaticImage() != null));
+                    if (st.getContentDescription() != null) {
+                        Log.d(TAG, "readIcon slot " + slotId + " desc=" +
+                                st.getContentDescription().getTextAt(getResources(), java.time.Instant.now()));
+                    }
+                    Icon icon = null;
+                    boolean isColor = false;
+                    // Préférer l'image couleur (smallImage) si disponible
+                    if (st.getSmallImage() != null) {
+                        icon = st.getSmallImage().getImage();
+                        isColor = true;
+                    } else if (st.getMonochromaticImage() != null) {
+                        icon = st.getMonochromaticImage().getImage();
+                    }
+                    if (icon != null) {
                         Drawable drawable = icon.loadDrawable(DefiWatchFaceService.this);
                         if (drawable != null) {
                             Bitmap bmp = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888);
                             Canvas tmpCanvas = new Canvas(bmp);
                             drawable.setBounds(0, 0, sizePx, sizePx);
-                            drawable.setColorFilter(new PorterDuffColorFilter(COL_VIOLET, PorterDuff.Mode.SRC_IN));
+                            if (!isColor) {
+                                int tint = (slotId == COMPL_WEATHER) ? 0xFFFFD700 : COL_VIOLET;
+                                drawable.setColorFilter(new PorterDuffColorFilter(tint, PorterDuff.Mode.SRC_IN));
+                            }
                             drawable.draw(tmpCanvas);
                             return bmp;
                         }
@@ -517,8 +536,8 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
 
         // --- PAS | CAL ---
         private void drawStepsCal(Canvas c, int steps, int cals) {
-            float lx = CX - W * 0.16f, rx = CX + W * 0.16f;
-            float yLab = y(0.135f), yVal = y(0.195f), yGoal = y(0.235f);
+            float lx = CX - W * 0.14f, rx = CX + W * 0.14f;
+            float yLab = y(0.135f), yVal = y(0.200f), yGoal = y(0.245f);
 
             pLabel.setColor(COL_STEPS);
             c.drawText("PAS", lx, yLab, pLabel);
@@ -543,7 +562,7 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
 
         // --- FC ---
         private void drawHealth(Canvas c, int hr) {
-            float baseY = y(0.30f);
+            float baseY = y(0.33f);
             String num = hr > 0 ? String.valueOf(hr) : "--";
             String left = "\u2665 ";
             String right = " bpm";
@@ -567,14 +586,10 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         private void drawTime(Canvas c, ZonedDateTime z) {
             String hhmm = fmt("%02d:%02d", z.getHour(), z.getMinute());
             String ss = fmt(":%02d", z.getSecond());
-            float timeY = y(0.495f);
+            float timeY = y(0.505f);
             c.drawText(hhmm, CX - 18, timeY, pTime);
             float hw = pTime.measureText(hhmm) / 2f;
             c.drawText(ss, CX - 18 + hw + 3, timeY, pTimeSec);
-        }
-
-        // --- MÉTÉO + INFO : vide, tout dans drawInfoLine ---
-        private void drawWeather(Canvas c, String temp, Bitmap weatherIcn, String uv) {
         }
 
         // --- UNE LIGNE EN 3 ZONES : [icône]temp° | UV x · hum% | 🌙 Sem ---
@@ -587,7 +602,7 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             float iconSizePx = W * 0.15f;
             Bitmap weatherIcn = readIcon(COMPL_WEATHER, (int) iconSizePx);
 
-            // Zone gauche : icône + temp
+            // Zone gauche : icône
             float leftX = CX - W * 0.4f;
             pInfo.setTextAlign(Paint.Align.LEFT);
             float textStartX = leftX;
@@ -598,16 +613,12 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
 
             // Zone centre : Temp · UV · hum%
             pInfo.setTextAlign(Paint.Align.CENTER);
-            String center = (tempTxt != null && !tempTxt.isEmpty()) ? "T " + tempTxt : "--";
+            String center = (tempTxt != null && !tempTxt.isEmpty()) ? tempTxt : "--";
             if (uvTxt != null && !uvTxt.isEmpty())
-                center += " UV " + uvTxt;
-            if (humTxt != null && !humTxt.isEmpty() && !humTxt.contains("dim")) {
-                if (!center.isEmpty())
-                    center += "  ";
-                center += " H " + humTxt;
-            }
-            if (!center.isEmpty())
-                c.drawText(center, CX - W * 0.00f, lineY, pInfo);
+                center += "  UV " + uvTxt;
+            if (humTxt != null && !humTxt.isEmpty() && !humTxt.contains("dim"))
+                center += "  " + humTxt;
+            c.drawText(center, CX - W * 0.00f, lineY, pInfo);
 
             // Zone droite : 🌙 S11
             pInfo.setTextAlign(Paint.Align.RIGHT);
@@ -633,7 +644,7 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         private void drawBattery(Canvas c, int batt) {
             float bw = W * 0.50f, bh = 8;
             float left = CX - bw / 2f;
-            float barY = y(0.83f);
+            float barY = y(0.82f);
             c.drawRoundRect(left, barY, left + bw, barY + bh, 4, 4, pBarBg);
             float fill = (batt / 100f) * bw;
             pBarFill.setColor(batt > 20 ? COL_BLUE : COL_HEALTH);
@@ -650,16 +661,16 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             setupStroke(pArcCal, COL_CAL, 8);
             setupText(pLabel, COL_STEPS, 16, bold);
             setupText(pValue, COL_STEPS, 36, bold);
-            setupText(pGoal, COL_STEPS, 14, normal);
+            setupText(pGoal, COL_STEPS, 24, normal);
             pGoal.setAlpha(115);
             setupText(pHealth, COL_HEALTH, 26, bold);
             setupText(pTime, COL_WHITE, 80, bold);
             setupText(pTimeSec, COL_WHITE, 32, normal);
             pTimeSec.setAlpha(255);
             pTimeSec.setTextAlign(Paint.Align.LEFT);
-            setupText(pInfo, COL_VIOLET, 30, bold);
+            setupText(pInfo, COL_VIOLET, 32, bold);
             setupText(pDate, COL_WHITE, 32, bold);
-            setupText(pBattTxt, COL_BLUE, 28, bold);
+            setupText(pBattTxt, COL_BLUE, 32, bold);
             pSep.setColor(COL_SEP);
             pSep.setStrokeWidth(2f);
             pBarBg.setColor(COL_BLUE);
