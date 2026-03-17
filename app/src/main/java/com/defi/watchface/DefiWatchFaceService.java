@@ -567,7 +567,7 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         private void drawTime(Canvas c, ZonedDateTime z) {
             String hhmm = fmt("%02d:%02d", z.getHour(), z.getMinute());
             String ss = fmt(":%02d", z.getSecond());
-            float timeY = y(0.475f);
+            float timeY = y(0.495f);
             c.drawText(hhmm, CX - 18, timeY, pTime);
             float hw = pTime.measureText(hhmm) / 2f;
             c.drawText(ss, CX - 18 + hw + 3, timeY, pTimeSec);
@@ -580,12 +580,11 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         // --- UNE LIGNE EN 3 ZONES : [icône]temp° | UV x · hum% | 🌙 Sem ---
         private void drawInfoLine(Canvas c, ZonedDateTime z) {
             float lineY = y(0.63f);
-            String temp = readText(COMPL_TEMP);
+            String tempTxt = readText(COMPL_TEMP);
             String uvTxt = readText(COMPL_UV);
             String humTxt = readText(COMPL_HUMID);
-            int week = z.get(WeekFields.ISO.weekOfWeekBasedYear());
 
-            float iconSizePx = W * 0.125f;
+            float iconSizePx = W * 0.15f;
             Bitmap weatherIcn = readIcon(COMPL_WEATHER, (int) iconSizePx);
 
             // Zone gauche : icône + temp
@@ -596,18 +595,16 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
                 c.drawBitmap(weatherIcn, leftX, lineY - iconSizePx / 2f - pInfo.getTextSize() / 3f, null);
                 textStartX = leftX + iconSizePx + 3;
             }
-            String tempStr = (temp != null && !temp.isEmpty()) ? temp : "--";
-            c.drawText(tempStr, textStartX, lineY, pInfo);
 
-            // Zone centre : UV · hum%
+            // Zone centre : Temp · UV · hum%
             pInfo.setTextAlign(Paint.Align.CENTER);
-            String center = "";
+            String center = (tempTxt != null && !tempTxt.isEmpty()) ? "T " + tempTxt : "--";
             if (uvTxt != null && !uvTxt.isEmpty())
-                center = "UV " + uvTxt;
+                center += " UV " + uvTxt;
             if (humTxt != null && !humTxt.isEmpty() && !humTxt.contains("dim")) {
                 if (!center.isEmpty())
-                    center += " · ";
-                center += humTxt;
+                    center += "  ";
+                center += " H " + humTxt;
             }
             if (!center.isEmpty())
                 c.drawText(center, CX - W * 0.00f, lineY, pInfo);
@@ -615,7 +612,10 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             // Zone droite : 🌙 S11
             pInfo.setTextAlign(Paint.Align.RIGHT);
             float rightX = CX + W * 0.4f;
-            c.drawText(moonPhase() + "S" + week, rightX, lineY, pInfo);
+            float oldSize = pInfo.getTextSize();
+            pInfo.setTextSize(oldSize * 1.25f);
+            c.drawText(moonPhase(), rightX, lineY, pInfo);
+            pInfo.setTextSize(oldSize);
 
             // Reset align
             pInfo.setTextAlign(Paint.Align.CENTER);
@@ -623,8 +623,9 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
 
         // --- DATE ---
         private void drawDate(Canvas c, ZonedDateTime z) {
+            int week = z.get(WeekFields.ISO.weekOfWeekBasedYear());
             String d = dayShort(z.getDayOfWeek().getValue()) + "  " +
-                    z.getDayOfMonth() + "  " + monthShort(z.getMonthValue() - 1);
+                    z.getDayOfMonth() + "  " + monthShort(z.getMonthValue() - 1) + "  S" + week;
             c.drawText(d, CX, y(0.78f), pDate);
         }
 
