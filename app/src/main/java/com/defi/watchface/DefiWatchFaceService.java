@@ -13,6 +13,9 @@ import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.Icon;
 import android.os.BatteryManager;
+import android.text.Layout;
+import android.text.StaticLayout;
+import android.text.TextPaint;
 import android.util.Log;
 import android.view.SurfaceHolder;
 
@@ -24,6 +27,8 @@ import androidx.wear.watchface.DrawMode;
 import androidx.wear.watchface.ListenableWatchFaceService;
 import androidx.wear.watchface.RenderParameters;
 import androidx.wear.watchface.Renderer;
+import androidx.wear.watchface.TapEvent;
+import androidx.wear.watchface.TapType;
 import androidx.wear.watchface.WatchFace;
 import androidx.wear.watchface.WatchFaceType;
 import androidx.wear.watchface.WatchState;
@@ -234,8 +239,24 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         DefiRenderer renderer = new DefiRenderer(
                 surfaceHolder, watchState, styleRepo, complicationSlotsManager);
 
-        return Futures.immediateFuture(
-                new WatchFace(WatchFaceType.DIGITAL, renderer));
+        WatchFace watchFace = new WatchFace(WatchFaceType.DIGITAL, renderer);
+        watchFace.setTapListener(new WatchFace.TapListener() {
+            @Override
+            public void onTapEvent(int tapType, @NonNull TapEvent tapEvent,
+                    ComplicationSlot complicationSlot) {
+                if (tapType == TapType.UP && NotificationHolder.isActive()) {
+                    android.app.PendingIntent intent = NotificationHolder.getContentIntent();
+                    if (intent != null) {
+                        try {
+                            intent.send();
+                        } catch (android.app.PendingIntent.CanceledException e) {
+                            Log.w(TAG, "Notification intent cancelled", e);
+                        }
+                    }
+                }
+            }
+        });
+        return Futures.immediateFuture(watchFace);
     }
 
     // =========================================================================
@@ -283,6 +304,11 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         private final Paint pAmbTime = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint pAmbDate = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint pAmbBatt = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint pNotifTime = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint pNotifApp = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint pNotifTitle = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final TextPaint pNotifText = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint pNotifBar = new Paint(Paint.ANTI_ALIAS_FLAG);
 
         DefiRenderer(@NonNull SurfaceHolder holder,
                 @NonNull WatchState watchState,
@@ -327,6 +353,9 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             if (ambient) {
                 c.drawColor(0xFF000000);
                 drawAmbient(c, zdt, battPct);
+            } else if (NotificationHolder.isActive()) {
+                c.drawColor(COL_BG);
+                drawNotificationMode(c, zdt);
             } else {
                 c.drawColor(COL_BG);
                 drawArcs(c, steps, cals);
@@ -524,11 +553,11 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         private void drawArcs(Canvas c, int steps, int cals) {
             float sp = Math.min(steps / (float) STEP_GOAL, 1f);
             float cp = Math.min(cals / (float) CAL_GOAL, 1f);
-            pArcSteps.setAlpha(35);
+            pArcSteps.setAlpha(75);
             c.drawArc(arcOuter, 135, 270, false, pArcSteps);
             pArcSteps.setAlpha(230);
             c.drawArc(arcOuter, 135, sp * 270, false, pArcSteps);
-            pArcCal.setAlpha(35);
+            pArcCal.setAlpha(75);
             c.drawArc(arcInner, 135, 270, false, pArcCal);
             pArcCal.setAlpha(230);
             c.drawArc(arcInner, 135, cp * 270, false, pArcCal);
@@ -645,43 +674,102 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             float bw = W * 0.50f, bh = 8;
             float left = CX - bw / 2f;
             float barY = y(0.82f);
+            int battCol = batt > 20 ? COL_BLUE : COL_HEALTH;
+            pBarBg.setColor(battCol);
+            pBarBg.setAlpha(75);
             c.drawRoundRect(left, barY, left + bw, barY + bh, 4, 4, pBarBg);
             float fill = (batt / 100f) * bw;
-            pBarFill.setColor(batt > 20 ? COL_BLUE : COL_HEALTH);
+            pBarFill.setColor(battCol);
+            pBarFill.setAlpha(230);
             c.drawRoundRect(left, barY, left + fill, barY + bh, 4, 4, pBarFill);
             pBattTxt.setColor(batt > 20 ? COL_BLUE : COL_HEALTH);
             c.drawText(batt + "%", CX, y(0.90f), pBattTxt);
+        }
+
+        // --- NOTIFICATION MODE ---
+        private void drawNotificationMode(Canvas c, ZonedDateTime z) {
+            // Heure en petit en haut
+            String hhmm = fmt("%02d:%02d", z.getHour(), z.getMinute());
+            c.drawText(hhmm, CX, y(0.12f), pNotifTime);
+
+            // Icône de l'app
+            Bitmap icon = NotificationHolder.getIcon();
+            if (icon != null) {
+                float iconSize = W * 0.10f;
+                c.drawBitmap(icon, CX - iconSize / 2f, y(0.18f), null);
+            }
+
+            // Nom de l'app
+            String appName = NotificationHolder.getAppName();
+            c.drawText(appName, CX, y(0.32f), pNotifApp);
+
+            // Titre
+            String title = NotificationHolder.getTitle();
+            c.drawText(title, CX, y(0.42f), pNotifTitle);
+
+            // Texte (word-wrap avec StaticLayout)
+            String text = NotificationHolder.getText();
+            if (text != null && !text.isEmpty()) {
+                int textWidth = (int) (W * 0.75f);
+                StaticLayout layout = StaticLayout.Builder
+                        .obtain(text, 0, text.length(), pNotifText, textWidth)
+                        .setAlignment(Layout.Alignment.ALIGN_CENTER)
+                        .setMaxLines(4)
+                        .build();
+                c.save();
+                c.translate(CX - textWidth / 2f, y(0.48f));
+                layout.draw(c);
+                c.restore();
+            }
+
+            // Barre de countdown (temps restant sur 30s)
+            long elapsed = System.currentTimeMillis() - NotificationHolder.getTimestamp();
+            float remaining = Math.max(0, 1f - (elapsed / 30_000f));
+            float bw = W * 0.50f, bh = 6;
+            float left = CX - bw / 2f;
+            float barY = y(0.85f);
+            pNotifBar.setAlpha(75);
+            c.drawRoundRect(left, barY, left + bw, barY + bh, 3, 3, pNotifBar);
+            pNotifBar.setAlpha(230);
+            c.drawRoundRect(left, barY, left + remaining * bw, barY + bh, 3, 3, pNotifBar);
         }
 
         // --- PAINTS ---
         private void initPaints() {
             Typeface bold = Typeface.create("sans-serif-condensed", Typeface.BOLD);
             Typeface normal = Typeface.create("sans-serif-condensed", Typeface.NORMAL);
+            // Normal mode settings
             setupStroke(pArcSteps, COL_STEPS, 12);
             setupStroke(pArcCal, COL_CAL, 8);
             setupText(pLabel, COL_STEPS, 16, bold);
             setupText(pValue, COL_STEPS, 36, bold);
             setupText(pGoal, COL_STEPS, 24, normal);
-            pGoal.setAlpha(115);
             setupText(pHealth, COL_HEALTH, 26, bold);
             setupText(pTime, COL_WHITE, 80, bold);
             setupText(pTimeSec, COL_WHITE, 32, normal);
-            pTimeSec.setAlpha(255);
             pTimeSec.setTextAlign(Paint.Align.LEFT);
             setupText(pInfo, COL_VIOLET, 32, bold);
             setupText(pDate, COL_WHITE, 32, bold);
             setupText(pBattTxt, COL_BLUE, 32, bold);
-            pSep.setColor(COL_SEP);
+            // Ambient mode settings
+            pSep.setColor(COL_GREY);
+            pSep.setAlpha(115);
             pSep.setStrokeWidth(2f);
-            pBarBg.setColor(COL_BLUE);
-            pBarBg.setAlpha(35);
-            pBarFill.setColor(COL_BLUE);
             setupText(pAmbTime, COL_WHITE, 80, bold);
             pAmbTime.setAlpha(180);
             setupText(pAmbDate, COL_GREY, 32, normal);
             pAmbDate.setAlpha(128);
             setupText(pAmbBatt, COL_BLUE, 18, normal);
             pAmbBatt.setAlpha(128);
+            // Notification mode settings
+            setupText(pNotifTime, COL_WHITE, 50, bold);
+            setupText(pNotifApp, COL_VIOLET, 24, bold);
+            setupText(pNotifTitle, COL_WHITE, 28, bold);
+            pNotifText.setColor(COL_GREY);
+            pNotifText.setTextSize(22);
+            pNotifText.setTypeface(normal);
+            pNotifText.setTextAlign(Paint.Align.LEFT);
+            pNotifBar.setColor(COL_VIOLET);
         }
 
         private void setupStroke(Paint p, int c, float w) {
