@@ -47,7 +47,7 @@ public class DefiNotificationListenerService extends NotificationListenerService
         String text = txt != null ? txt.toString().trim() : "";
 
         // Skip notifications without body text (system notifications, empty notifs)
-        if (title.isEmpty() || text.isEmpty())
+        if (text.isEmpty())
             return;
 
         // Icon

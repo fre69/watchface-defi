@@ -765,8 +765,8 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             setupText(pNotifTime, COL_WHITE, 50, bold);
             setupText(pNotifApp, COL_VIOLET, 24, bold);
             setupText(pNotifTitle, COL_WHITE, 28, bold);
-            pNotifText.setColor(COL_GREY);
-            pNotifText.setTextSize(22);
+            pNotifText.setColor(COL_WHITE);
+            pNotifText.setTextSize(24);
             pNotifText.setTypeface(normal);
             pNotifText.setTextAlign(Paint.Align.LEFT);
             pNotifBar.setColor(COL_VIOLET);
