@@ -24,7 +24,8 @@ public class DefiNotificationListenerService extends NotificationListenerService
 
     @Override
     public void onNotificationPosted(StatusBarNotification sbn) {
-        if (sbn.getPackageName().equals(getPackageName())) return;
+        if (sbn.getPackageName().equals(getPackageName()))
+            return;
 
         Notification notif = sbn.getNotification();
         Bundle extras = notif.extras;
@@ -43,7 +44,11 @@ public class DefiNotificationListenerService extends NotificationListenerService
         CharSequence t = extras.getCharSequence(Notification.EXTRA_TITLE);
         CharSequence txt = extras.getCharSequence(Notification.EXTRA_TEXT);
         String title = t != null ? t.toString() : "";
-        String text = txt != null ? txt.toString() : "";
+        String text = txt != null ? txt.toString().trim() : "";
+
+        // Skip notifications without body text (system notifications, empty notifs)
+        if (title.isEmpty() || text.isEmpty())
+            return;
 
         // Icon
         Bitmap iconBmp = null;

@@ -4,6 +4,9 @@ import android.app.PendingIntent;
 import android.graphics.Bitmap;
 
 public final class NotificationHolder {
+    /** Durée d'affichage de la notification (ms) */
+    public static final long DISPLAY_DURATION_MS = 30_000;
+
     private static String appName = "";
     private static String title = "";
     private static String text = "";
@@ -21,7 +24,7 @@ public final class NotificationHolder {
     }
 
     public static synchronized boolean isActive() {
-        return timestamp > 0 && (System.currentTimeMillis() - timestamp) < 30_000;
+        return timestamp > 0 && (System.currentTimeMillis() - timestamp) < DISPLAY_DURATION_MS;
     }
 
     public static synchronized String getAppName() { return appName; }

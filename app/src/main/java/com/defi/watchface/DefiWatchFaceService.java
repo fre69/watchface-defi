@@ -724,7 +724,7 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
 
             // Barre de countdown (temps restant sur 30s)
             long elapsed = System.currentTimeMillis() - NotificationHolder.getTimestamp();
-            float remaining = Math.max(0, 1f - (elapsed / 30_000f));
+            float remaining = Math.max(0, 1f - (elapsed / (float) NotificationHolder.DISPLAY_DURATION_MS));
             float bw = W * 0.50f, bh = 6;
             float left = CX - bw / 2f;
             float barY = y(0.85f);
