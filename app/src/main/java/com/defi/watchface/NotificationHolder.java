@@ -11,14 +11,16 @@ public final class NotificationHolder {
     private static String title = "";
     private static String text = "";
     private static Bitmap icon = null;
+    private static Bitmap picture = null;
     private static PendingIntent contentIntent = null;
     private static long timestamp = 0;
 
-    public static synchronized void set(String app, String t, String txt, Bitmap icn, PendingIntent intent) {
+    public static synchronized void set(String app, String t, String txt, Bitmap icn, Bitmap pic, PendingIntent intent) {
         appName = app;
         title = t;
         text = txt;
         icon = icn;
+        picture = pic;
         contentIntent = intent;
         timestamp = System.currentTimeMillis();
     }
@@ -41,6 +43,10 @@ public final class NotificationHolder {
 
     public static synchronized Bitmap getIcon() {
         return icon;
+    }
+
+    public static synchronized Bitmap getPicture() {
+        return picture;
     }
 
     public static synchronized PendingIntent getContentIntent() {

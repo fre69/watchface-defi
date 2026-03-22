@@ -46,8 +46,17 @@ public class DefiNotificationListenerService extends NotificationListenerService
         String title = t != null ? t.toString() : "";
         String text = txt != null ? txt.toString().trim() : "";
 
-        // Skip notifications without body text (system notifications, empty notifs)
-        if (text.isEmpty())
+        // Picture (photo attachée : WhatsApp, MMS, Instagram, etc.)
+        Bitmap picture = null;
+        if (extras.containsKey(Notification.EXTRA_PICTURE)) {
+            Object picObj = extras.get(Notification.EXTRA_PICTURE);
+            if (picObj instanceof Bitmap) {
+                picture = (Bitmap) picObj;
+            }
+        }
+
+        // Skip notifications without body text AND without picture
+        if (text.isEmpty() && picture == null)
             return;
 
         // Icon
@@ -71,6 +80,6 @@ public class DefiNotificationListenerService extends NotificationListenerService
         PendingIntent contentIntent = notif.contentIntent;
 
         Log.d(TAG, "Notification: " + appName + " / " + title + " / " + text);
-        NotificationHolder.set(appName, title, text, iconBmp, contentIntent);
+        NotificationHolder.set(appName, title, text, iconBmp, picture, contentIntent);
     }
 }

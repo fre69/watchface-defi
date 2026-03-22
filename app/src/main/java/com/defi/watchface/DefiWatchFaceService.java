@@ -707,6 +707,24 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             String title = NotificationHolder.getTitle();
             c.drawText(title, CX, y(0.42f), pNotifTitle);
 
+            // Picture (photo de la notification)
+            Bitmap picture = NotificationHolder.getPicture();
+            float contentY = y(0.42f) + 12;
+            if (picture != null) {
+                float maxH = 200;
+                float scale = maxH / picture.getHeight();
+                float drawW = picture.getWidth() * scale;
+                float drawH = maxH;
+                // Limiter la largeur à 75% de l'écran
+                if (drawW > W * 0.75f) {
+                    drawW = W * 0.75f;
+                    drawH = picture.getHeight() * (drawW / picture.getWidth());
+                }
+                Bitmap scaled = Bitmap.createScaledBitmap(picture, (int) drawW, (int) drawH, true);
+                c.drawBitmap(scaled, CX - drawW / 2f, contentY, null);
+                contentY += drawH + 8;
+            }
+
             // Texte (word-wrap avec StaticLayout)
             String text = NotificationHolder.getText();
             if (text != null && !text.isEmpty()) {
@@ -717,7 +735,7 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
                         .setMaxLines(4)
                         .build();
                 c.save();
-                c.translate(CX - textWidth / 2f, y(0.48f));
+                c.translate(CX - textWidth / 2f, contentY);
                 layout.draw(c);
                 c.restore();
             }
@@ -766,7 +784,7 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             setupText(pNotifApp, COL_VIOLET, 24, bold);
             setupText(pNotifTitle, COL_WHITE, 28, bold);
             pNotifText.setColor(COL_WHITE);
-            pNotifText.setTextSize(24);
+            pNotifText.setTextSize(28);
             pNotifText.setTypeface(normal);
             pNotifText.setTextAlign(Paint.Align.LEFT);
             pNotifBar.setColor(COL_VIOLET);
