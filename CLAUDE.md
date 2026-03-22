@@ -66,6 +66,30 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 adb exec-out screencap -p > screenshot.png
 ```
 
+## Commandes ADB (non disponibles dans les menus de la montre)
+
+```bash
+# --- DEPLOY ---
+adb uninstall com.defi.watchface.distance
+adb install app/build/outputs/apk/debug/app-debug.apk
+adb exec-out screencap -p > screenshot.png
+
+# --- PERMISSIONS (à accorder après chaque install) ---
+# Notification listener (lecture des notifications pour le cadran)
+adb shell cmd notification allow_listener com.defi.watchface.distance/com.defi.watchface.DefiNotificationListenerService
+
+# --- RÉGLAGES MONTRE (options absentes des paramètres UI) ---
+# Désactiver les notifications heads-up (popup par-dessus l'écran)
+# Les notifs restent dans le tiroir + s'affichent sur le cadran via la bulle
+adb shell settings put global heads_up_notifications_enabled 0
+
+# Réactiver les heads-up si besoin
+adb shell settings put global heads_up_notifications_enabled 1
+
+# Désactiver le réveil écran sur notification (optionnel)
+adb shell settings put secure doze_pulse_on_notifications 0
+```
+
 ## Configuration technique
 - **Résolution écran** : 466x466 (détectée dynamiquement via `onSurfaceChanged`)
 - **compileSdk** : 34
