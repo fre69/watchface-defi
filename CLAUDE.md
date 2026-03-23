@@ -78,10 +78,16 @@ adb exec-out screencap -p > screenshot.png
 # Notification listener (lecture des notifications pour le cadran)
 adb shell cmd notification allow_listener com.defi.watchface.distance/com.defi.watchface.DefiNotificationListenerService
 
+# Runtime permissions (complications OHealth : pas, calories, FC, etc.)
+adb shell pm grant com.defi.watchface.distance android.permission.BODY_SENSORS
+adb shell pm grant com.defi.watchface.distance android.permission.ACTIVITY_RECOGNITION
+adb shell pm grant com.defi.watchface.distance com.google.android.wearable.permission.RECEIVE_COMPLICATION_DATA
+
 # --- RÉGLAGES MONTRE (options absentes des paramètres UI) ---
 # Désactiver les notifications heads-up (popup par-dessus l'écran)
 # Les notifs restent dans le tiroir + s'affichent sur le cadran via la bulle
 adb shell settings put global heads_up_notifications_enabled 0
+adb shell settings put secure notification_bubbles 0
 
 # Réactiver les heads-up si besoin
 adb shell settings put global heads_up_notifications_enabled 1

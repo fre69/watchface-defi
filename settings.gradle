@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "DefiDistance"
 include ':app'
+include ':mobile'

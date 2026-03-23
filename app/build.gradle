@@ -38,4 +38,7 @@ dependencies {
 
     // Guava pour ListenableFuture
     implementation 'com.google.guava:guava:31.1-android'
+
+    // Wearable DataLayer API (réception notifs du téléphone)
+    implementation 'com.google.android.gms:play-services-wearable:18.1.0'
 }
