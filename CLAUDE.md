@@ -29,10 +29,36 @@ l'OnePlus Watch 2 à cause de l'architecture bi-processeur (Snapdragon W5 + BES 
 Seules les apps OnePlus/OHealth ont accès au co-processeur. Les Complications sont le seul moyen
 d'obtenir des données cohérentes avec OHealth.
 
+### Notifications bridgées (téléphone → montre)
+Les notifications bridgées via OHealth passent par le **co-processeur MCU (BES 2600)** et le SysUI OnePlus,
+sans transiter par le `NotificationManager` Android. Le `NotificationListenerService` côté montre ne les voit pas.
+
+**Solution** : module `mobile` (app compagnon téléphone) qui capture les notifs côté téléphone
+et les envoie à la montre via la **Wearable DataLayer API** (`play-services-wearable`).
+- Le MCU/OHealth bridge reste actif pour réveiller l'écran (impossible de wake la montre autrement)
+- La DataLayer envoie le contenu enrichi (titre, texte, picture) en parallèle
+- Le cadran affiche sa bulle notification avec les données DataLayer
+
+**Limitation MCU** : le processeur principal (AP) est complètement coupé en veille, seul le MCU est alimenté.
+`PowerManager.WakeLock` ne fonctionne PAS pour réveiller l'écran — OnePlus a verrouillé cette fonctionnalité.
+
 ### Fichiers clés
+
+**Module `app` (montre, Wear OS)** :
 - `app/src/main/java/com/defi/watchface/DefiWatchFaceService.java` — Service + Renderer + Complications
-- `app/src/main/AndroidManifest.xml` — Déclaration du service watchface
-- `app/build.gradle` — Dépendances (watchface, watchface-guava, guava)
+- `app/src/main/java/com/defi/watchface/DataLayerListenerService.java` — Réception notifs DataLayer
+- `app/src/main/java/com/defi/watchface/DefiNotificationListenerService.java` — Listener notifs locales
+- `app/src/main/java/com/defi/watchface/NotificationHolder.java` — Données notification partagées
+- `app/src/main/AndroidManifest.xml` — Déclaration des services
+- `app/build.gradle` — Dépendances (watchface, watchface-guava, guava, play-services-wearable)
+
+**Module `mobile` (téléphone)** :
+- `mobile/src/main/java/com/defi/watchface/mobile/PhoneNotificationListenerService.java` — Capture notifs + envoi DataLayer
+- `mobile/src/main/java/com/defi/watchface/mobile/MainActivity.java` — Activation du listener
+- `mobile/src/main/AndroidManifest.xml`
+- `mobile/build.gradle`
+
+**Design** :
 - `design-reference/DESIGN_SPEC.md` — Spécifications couleurs et layout
 - `design-reference/watchface-v4-mockup.jsx` — Mockup React du rendu cible
 
@@ -52,17 +78,20 @@ d'obtenir des données cohérentes avec OHealth.
 ## Build & Deploy
 
 ```bash
-# Build
-gradlew.bat :app:assembleDebug
+# Build les deux modules
+gradlew.bat :app:assembleDebug :mobile:assembleDebug
 
 # Ou via le Gradle caché si gradlew ne marche pas
-"C:/Users/frevi/.gradle/wrapper/dists/gradle-8.4-bin/1w5dpkrfk8irigvoxmyhowfim/gradle-8.4/bin/gradle" --project-dir "c:/Users/frevi/Desktop/Mes projets/watchface-defi" :app:assembleDebug
+"C:/Users/frevi/.gradle/wrapper/dists/gradle-8.4-bin/1w5dpkrfk8irigvoxmyhowfim/gradle-8.4/bin/gradle" --project-dir "c:/Users/frevi/Desktop/Mes projets/watchface-defi" :app:assembleDebug :mobile:assembleDebug
 
-# Install sur la montre (USB connecté)
+# Install montre (USB connecté)
 adb uninstall com.defi.watchface.distance
 adb install app/build/outputs/apk/debug/app-debug.apk
 
-# Screenshot
+# Install téléphone (USB ou WiFi debug)
+adb -s <phone-serial> install mobile/build/outputs/apk/debug/mobile-debug.apk
+
+# Screenshot montre
 adb exec-out screencap -p > screenshot.png
 ```
 
@@ -108,9 +137,14 @@ adb shell settings put secure doze_pulse_on_notifications 0
 - **Calories + Météo** : Résolu en ajoutant `<queries>` (visibilité packages Android 11+)
   et la permission `RECEIVE_COMPLICATION_DATA` dans le manifest. Les données remontent
   maintenant correctement via les ComplicationProviders OHealth.
+- **Notifications bridgées** : Le `NotificationListenerService` côté montre ne reçoit pas
+  les notifs bridgées via MCU/OHealth. Résolu avec un module `mobile` compagnon qui capture
+  les notifs sur le téléphone et les envoie via Wearable DataLayer API.
 
 ## Problèmes connus
 - **Sommeil/Stress** : Pas de ComplicationProvider dédié trouvé sur la montre. `DailyActivityComplicationService` renvoie les pas au lieu de l'activité complète.
+- **Popup notifications OHealth** : Impossible de désactiver les popups du SysUI OnePlus via ADB (`heads_up_notifications_enabled`, `notification_bubbles`). Le SysUI gère l'affichage directement depuis le MCU, indépendamment des réglages Android.
+- **Wake screen** : `PowerManager.WakeLock` ne fonctionne pas pour réveiller l'écran (AP coupé en veille, MCU seul alimenté). Seul le bridge OHealth/MCU peut wake l'écran.
 
 ## Historique des tentatives
 1. **WFF XML déclaratif** : ne fonctionne pas sur OnePlus Watch 2 (Wear OS 4 ne supporte pas WFF tiers)
