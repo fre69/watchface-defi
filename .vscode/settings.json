@@ -1,3 +1,26 @@
 {
-    "java.configuration.updateBuildConfiguration": "automatic"
+    "java.configuration.updateBuildConfiguration":  "automatic",
+    "workbench.colorCustomizations":  {
+                                          "titleBar.activeBackground":  "#4d6b1f",
+                                          "titleBar.activeForeground":  "#ffffff",
+                                          "titleBar.inactiveBackground":  "#4d6b1f",
+                                          "titleBar.inactiveForeground":  "#ffffff",
+                                          "titleBar.border":  "#8b9f6d",
+                                          "commandCenter.foreground":  "#ffffff",
+                                          "commandCenter.activeForeground":  "#ffffff",
+                                          "commandCenter.inactiveForeground":  "#ffffff",
+                                          "commandCenter.background":  "#4d6b1f",
+                                          "commandCenter.activeBackground":  "#688141",
+                                          "commandCenter.border":  "#8b9f6d",
+                                          "commandCenter.inactiveBorder":  "#8b9f6d",
+                                          "activityBar.background":  "#4d6b1f",
+                                          "activityBar.foreground":  "#ffffff",
+                                          "activityBar.inactiveForeground":  "#ffffffcc",
+                                          "activityBarBadge.background":  "#ffb300",
+                                          "activityBarBadge.foreground":  "#000000",
+                                          "statusBar.background":  "#4d6b1f",
+                                          "statusBar.foreground":  "#ffffff",
+                                          "statusBar.noFolderBackground":  "#4d6b1f",
+                                          "statusBar.debuggingBackground":  "#b34700"
+                                      }
 }
