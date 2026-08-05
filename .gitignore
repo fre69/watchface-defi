@@ -10,3 +10,9 @@
 .externalNativeBuild
 .cxx
 screenshot*.png
+
+# Claude Code : la config partagée est versionnée, les préférences personnelles
+# (settings.local.json) et les worktrees restent hors du dépôt. Dépôt PUBLIC.
+# .claude/* ignore le CONTENU du dossier, ce qui permet à la négation de marcher.
+.claude/*
+!.claude/settings.json
