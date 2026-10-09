@@ -14,15 +14,27 @@ public final class NotificationHolder {
     private static Bitmap picture = null;
     private static PendingIntent contentIntent = null;
     private static long timestamp = 0;
+    /** Prévenu à chaque nouvelle notification (le cadran ne se redessine qu'une fois par minute) */
+    private static Runnable onChange = null;
 
-    public static synchronized void set(String app, String t, String txt, Bitmap icn, Bitmap pic, PendingIntent intent) {
-        appName = app;
-        title = t;
-        text = txt;
-        icon = icn;
-        picture = pic;
-        contentIntent = intent;
-        timestamp = System.currentTimeMillis();
+    public static synchronized void setOnChangeListener(Runnable listener) {
+        onChange = listener;
+    }
+
+    public static void set(String app, String t, String txt, Bitmap icn, Bitmap pic, PendingIntent intent) {
+        Runnable listener;
+        synchronized (NotificationHolder.class) {
+            appName = app;
+            title = t;
+            text = txt;
+            icon = icn;
+            picture = pic;
+            contentIntent = intent;
+            timestamp = System.currentTimeMillis();
+            listener = onChange;
+        }
+        if (listener != null)
+            listener.run();
     }
 
     public static synchronized boolean isActive() {

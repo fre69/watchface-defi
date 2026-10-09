@@ -278,6 +278,11 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         private static final int STEP_GOAL = 10000;
         private static final int CAL_GOAL = 800;
 
+        // Une image par minute (pas de secondes) ; une par seconde seulement
+        // pendant la bulle notification, pour la barre de décompte
+        private static final long REFRESH_NORMAL_MS = 60_000L;
+        private static final long REFRESH_NOTIF_MS = 1_000L;
+
         private final ComplicationSlotsManager complMgr;
         private final BatteryManager batteryMgr;
 
@@ -285,6 +290,15 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         private int W;
         private final RectF arcOuter = new RectF();
         private final RectF arcInner = new RectF();
+
+        // --- Caches : recalculés seulement quand leur source change ---
+        private ComplicationData weatherIconSrc;
+        private int weatherIconSize;
+        private Bitmap weatherIcon;
+        private Bitmap pictureSrc;
+        private Bitmap pictureScaled;
+        private String notifTextSrc;
+        private StaticLayout notifTextLayout;
 
         // --- Paints ---
         private final Paint pArcSteps = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -294,7 +308,6 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         private final Paint pGoal = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint pHealth = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint pTime = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint pTimeSec = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint pInfo = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint pDate = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint pBattTxt = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -315,10 +328,18 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
                 @NonNull CurrentUserStyleRepository styleRepo,
                 @NonNull ComplicationSlotsManager complMgr) {
             super(holder, styleRepo, watchState, CanvasType.HARDWARE,
-                    1000L, false);
+                    REFRESH_NORMAL_MS, false);
             this.complMgr = complMgr;
             batteryMgr = (BatteryManager) getSystemService(BATTERY_SERVICE);
             initPaints();
+            // Afficher la bulle dès réception, sans attendre la minute suivante
+            NotificationHolder.setOnChangeListener(this::postInvalidate);
+        }
+
+        @Override
+        public void onDestroy() {
+            NotificationHolder.setOnChangeListener(null);
+            super.onDestroy();
         }
 
         @Override
@@ -342,21 +363,26 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             }
 
             boolean ambient = getRenderParameters().getDrawMode() == DrawMode.AMBIENT;
+            boolean notif = !ambient && NotificationHolder.isActive();
 
-            // Lire les données des complications
-            int steps = readInt(COMPL_STEPS);
-            int cals = readInt(COMPL_CALORIES);
-            int hr = readInt(COMPL_HR);
-            // temp, uv et icône météo sont lus dans drawInfoLine
+            long refresh = notif ? REFRESH_NOTIF_MS : REFRESH_NORMAL_MS;
+            if (getInteractiveDrawModeUpdateDelayMillis() != refresh)
+                setInteractiveDrawModeUpdateDelayMillis(refresh);
+
             int battPct = batteryMgr.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY);
 
             if (ambient) {
                 c.drawColor(0xFF000000);
                 drawAmbient(c, zdt, battPct);
-            } else if (NotificationHolder.isActive()) {
+            } else if (notif) {
                 c.drawColor(COL_BG);
                 drawNotificationMode(c, zdt);
             } else {
+                // Lire les données des complications
+                int steps = readInt(COMPL_STEPS);
+                int cals = readInt(COMPL_CALORIES);
+                int hr = readInt(COMPL_HR);
+                // temp, uv et icône météo sont lus dans drawInfoLine
                 c.drawColor(COL_BG);
                 drawArcs(c, steps, cals);
                 drawStepsCal(c, steps, cals);
@@ -369,43 +395,29 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         }
 
         // --- Lecture des données complications ---
+        // Appelées à chaque image : aucun log ni allocation inutile ici
+
+        private ComplicationData data(int slotId) {
+            ComplicationSlot slot = complMgr.get(slotId);
+            return slot != null ? slot.getComplicationData().getValue() : null;
+        }
 
         private int readInt(int slotId) {
-            ComplicationSlot slot = complMgr.get(slotId);
-            if (slot == null) {
-                Log.d(TAG, "readInt slot " + slotId + ": slot null");
+            ComplicationData data = data(slotId);
+            if (data == null)
                 return 0;
-            }
-            ComplicationData data = slot.getComplicationData().getValue();
-            if (data == null) {
-                Log.d(TAG, "readInt slot " + slotId + ": data null");
-                return 0;
-            }
-            Log.d(TAG, "readInt slot " + slotId + ": type=" + data.getClass().getSimpleName());
             try {
                 if (data instanceof RangedValueComplicationData) {
-                    RangedValueComplicationData rv = (RangedValueComplicationData) data;
-                    Log.d(TAG, "  RANGED val=" + rv.getValue() + " min=" + rv.getMin() + " max=" + rv.getMax());
-                    // Also check if it has text
-                    if (rv.getText() != null) {
-                        CharSequence t = rv.getText().getTextAt(getResources(), java.time.Instant.now());
-                        Log.d(TAG, "  RANGED text=" + t);
-                    }
-                    return (int) rv.getValue();
+                    return (int) ((RangedValueComplicationData) data).getValue();
                 }
                 if (data instanceof ShortTextComplicationData) {
                     CharSequence txt = ((ShortTextComplicationData) data)
                             .getText().getTextAt(getResources(), java.time.Instant.now());
-                    Log.d(TAG, "  SHORT_TEXT text=" + txt);
                     if (txt != null) {
                         String s = txt.toString().replaceAll("[^0-9]", "");
                         if (!s.isEmpty())
                             return Integer.parseInt(s);
                     }
-                }
-                // Log other types we might not handle
-                if (data instanceof MonochromaticImageComplicationData) {
-                    Log.d(TAG, "  MONOCHROMATIC_IMAGE (unhandled)");
                 }
             } catch (Exception e) {
                 Log.w(TAG, "readInt " + slotId, e);
@@ -414,43 +426,19 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         }
 
         private String readText(int slotId) {
-            ComplicationSlot slot = complMgr.get(slotId);
-            if (slot == null) {
-                Log.d(TAG, "readText slot " + slotId + ": slot null");
+            ComplicationData data = data(slotId);
+            if (data == null)
                 return "";
-            }
-            ComplicationData data = slot.getComplicationData().getValue();
-            if (data == null) {
-                Log.d(TAG, "readText slot " + slotId + ": data null");
-                return "";
-            }
-            Log.d(TAG, "readText slot " + slotId + ": type=" + data.getClass().getSimpleName());
             try {
                 if (data instanceof ShortTextComplicationData) {
-                    ShortTextComplicationData st = (ShortTextComplicationData) data;
-                    CharSequence txt = st.getText().getTextAt(getResources(), java.time.Instant.now());
-                    Log.d(TAG, "  SHORT_TEXT text=" + txt);
-                    // Log title and contentDescription for weather diagnosis
-                    if (st.getTitle() != null) {
-                        CharSequence title = st.getTitle().getTextAt(getResources(), java.time.Instant.now());
-                        Log.d(TAG, "  SHORT_TEXT title=" + title);
-                    }
-                    if (st.getContentDescription() != null) {
-                        CharSequence desc = st.getContentDescription().getTextAt(getResources(),
-                                java.time.Instant.now());
-                        Log.d(TAG, "  SHORT_TEXT desc=" + desc);
-                    }
-                    if (st.getMonochromaticImage() != null) {
-                        Log.d(TAG, "  SHORT_TEXT has monoImage");
-                    }
+                    CharSequence txt = ((ShortTextComplicationData) data)
+                            .getText().getTextAt(getResources(), java.time.Instant.now());
                     return txt != null ? txt.toString() : "";
                 }
                 if (data instanceof RangedValueComplicationData) {
                     RangedValueComplicationData rv = (RangedValueComplicationData) data;
-                    Log.d(TAG, "  RANGED val=" + rv.getValue());
                     if (rv.getText() != null) {
                         CharSequence t = rv.getText().getTextAt(getResources(), java.time.Instant.now());
-                        Log.d(TAG, "  RANGED text=" + t);
                         return t != null ? t.toString() : "";
                     }
                     return String.valueOf((int) rv.getValue());
@@ -461,72 +449,46 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             return "";
         }
 
-        /** Read the title field from a complication */
-        private String readTitle(int slotId) {
-            ComplicationSlot slot = complMgr.get(slotId);
-            if (slot == null)
-                return "";
-            ComplicationData data = slot.getComplicationData().getValue();
-            if (data == null)
-                return "";
-            try {
-                if (data instanceof ShortTextComplicationData) {
-                    ShortTextComplicationData st = (ShortTextComplicationData) data;
-                    if (st.getTitle() != null) {
-                        CharSequence title = st.getTitle().getTextAt(getResources(), java.time.Instant.now());
-                        return title != null ? title.toString() : "";
-                    }
-                }
-            } catch (Exception e) {
-                Log.w(TAG, "readTitle " + slotId, e);
+        /** Icône météo, reconstruite seulement quand la complication change */
+        private Bitmap weatherIcon(int sizePx) {
+            ComplicationData data = data(COMPL_WEATHER);
+            if (data != weatherIconSrc || sizePx != weatherIconSize) {
+                weatherIcon = readIcon(data, COMPL_WEATHER, sizePx);
+                weatherIconSrc = data;
+                weatherIconSize = sizePx;
             }
-            return "";
+            return weatherIcon;
         }
 
         /**
          * Read the MonochromaticImage icon from a complication and draw it as a Bitmap
          */
-        private Bitmap readIcon(int slotId, int sizePx) {
-            ComplicationSlot slot = complMgr.get(slotId);
-            if (slot == null)
-                return null;
-            ComplicationData data = slot.getComplicationData().getValue();
-            if (data == null)
+        private Bitmap readIcon(ComplicationData data, int slotId, int sizePx) {
+            if (!(data instanceof ShortTextComplicationData))
                 return null;
             try {
-                if (data instanceof ShortTextComplicationData) {
-                    ShortTextComplicationData st = (ShortTextComplicationData) data;
-                    // Log diagnostic pour identifier les conditions météo
-                    CharSequence txt = st.getText().getTextAt(getResources(), java.time.Instant.now());
-                    Log.d(TAG, "readIcon slot " + slotId + " text=" + txt
-                            + " hasSmallImage=" + (st.getSmallImage() != null)
-                            + " hasMonoImage=" + (st.getMonochromaticImage() != null));
-                    if (st.getContentDescription() != null) {
-                        Log.d(TAG, "readIcon slot " + slotId + " desc=" +
-                                st.getContentDescription().getTextAt(getResources(), java.time.Instant.now()));
-                    }
-                    Icon icon = null;
-                    boolean isColor = false;
-                    // Préférer l'image couleur (smallImage) si disponible
-                    if (st.getSmallImage() != null) {
-                        icon = st.getSmallImage().getImage();
-                        isColor = true;
-                    } else if (st.getMonochromaticImage() != null) {
-                        icon = st.getMonochromaticImage().getImage();
-                    }
-                    if (icon != null) {
-                        Drawable drawable = icon.loadDrawable(DefiWatchFaceService.this);
-                        if (drawable != null) {
-                            Bitmap bmp = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888);
-                            Canvas tmpCanvas = new Canvas(bmp);
-                            drawable.setBounds(0, 0, sizePx, sizePx);
-                            if (!isColor) {
-                                int tint = (slotId == COMPL_WEATHER) ? 0xFFFFD700 : COL_VIOLET;
-                                drawable.setColorFilter(new PorterDuffColorFilter(tint, PorterDuff.Mode.SRC_IN));
-                            }
-                            drawable.draw(tmpCanvas);
-                            return bmp;
+                ShortTextComplicationData st = (ShortTextComplicationData) data;
+                Icon icon = null;
+                boolean isColor = false;
+                // Préférer l'image couleur (smallImage) si disponible
+                if (st.getSmallImage() != null) {
+                    icon = st.getSmallImage().getImage();
+                    isColor = true;
+                } else if (st.getMonochromaticImage() != null) {
+                    icon = st.getMonochromaticImage().getImage();
+                }
+                if (icon != null) {
+                    Drawable drawable = icon.loadDrawable(DefiWatchFaceService.this);
+                    if (drawable != null) {
+                        Bitmap bmp = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888);
+                        Canvas tmpCanvas = new Canvas(bmp);
+                        drawable.setBounds(0, 0, sizePx, sizePx);
+                        if (!isColor) {
+                            int tint = (slotId == COMPL_WEATHER) ? 0xFFFFD700 : COL_VIOLET;
+                            drawable.setColorFilter(new PorterDuffColorFilter(tint, PorterDuff.Mode.SRC_IN));
                         }
+                        drawable.draw(tmpCanvas);
+                        return bmp;
                     }
                 }
             } catch (Exception e) {
@@ -613,12 +575,9 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
 
         // --- HEURE ---
         private void drawTime(Canvas c, ZonedDateTime z) {
+            // Pas de secondes : elles imposeraient un rendu chaque seconde
             String hhmm = fmt("%02d:%02d", z.getHour(), z.getMinute());
-            String ss = fmt(":%02d", z.getSecond());
-            float timeY = y(0.505f);
-            c.drawText(hhmm, CX - 18, timeY, pTime);
-            float hw = pTime.measureText(hhmm) / 2f;
-            c.drawText(ss, CX - 18 + hw + 3, timeY, pTimeSec);
+            c.drawText(hhmm, CX, y(0.505f), pTime);
         }
 
         // --- UNE LIGNE EN 3 ZONES : [icône]temp° | UV x · hum% | 🌙 Sem ---
@@ -629,7 +588,7 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             String humTxt = readText(COMPL_HUMID);
 
             float iconSizePx = W * 0.15f;
-            Bitmap weatherIcn = readIcon(COMPL_WEATHER, (int) iconSizePx);
+            Bitmap weatherIcn = weatherIcon((int) iconSizePx);
 
             // Zone gauche : icône
             float leftX = CX - W * 0.4f;
@@ -708,39 +667,23 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             c.drawText(title, CX, y(0.42f), pNotifTitle);
 
             // Picture (photo de la notification)
-            Bitmap picture = NotificationHolder.getPicture();
+            Bitmap picture = scaledPicture(NotificationHolder.getPicture());
             float contentY = y(0.42f) + 12;
             if (picture != null) {
-                float maxH = 200;
-                float scale = maxH / picture.getHeight();
-                float drawW = picture.getWidth() * scale;
-                float drawH = maxH;
-                // Limiter la largeur à 75% de l'écran
-                if (drawW > W * 0.75f) {
-                    drawW = W * 0.75f;
-                    drawH = picture.getHeight() * (drawW / picture.getWidth());
-                }
-                Bitmap scaled = Bitmap.createScaledBitmap(picture, (int) drawW, (int) drawH, true);
-                c.drawBitmap(scaled, CX - drawW / 2f, contentY, null);
-                contentY += drawH + 8;
+                c.drawBitmap(picture, CX - picture.getWidth() / 2f, contentY, null);
+                contentY += picture.getHeight() + 8;
             }
 
             // Texte (word-wrap avec StaticLayout)
-            String text = NotificationHolder.getText();
-            if (text != null && !text.isEmpty()) {
-                int textWidth = (int) (W * 0.75f);
-                StaticLayout layout = StaticLayout.Builder
-                        .obtain(text, 0, text.length(), pNotifText, textWidth)
-                        .setAlignment(Layout.Alignment.ALIGN_CENTER)
-                        .setMaxLines(4)
-                        .build();
+            StaticLayout layout = notifTextLayout(NotificationHolder.getText());
+            if (layout != null) {
                 c.save();
-                c.translate(CX - textWidth / 2f, contentY);
+                c.translate(CX - layout.getWidth() / 2f, contentY);
                 layout.draw(c);
                 c.restore();
             }
 
-            // Barre de countdown (temps restant sur 30s)
+            // Barre de countdown (temps restant)
             long elapsed = System.currentTimeMillis() - NotificationHolder.getTimestamp();
             float remaining = Math.max(0, 1f - (elapsed / (float) NotificationHolder.DISPLAY_DURATION_MS));
             float bw = W * 0.50f, bh = 6;
@@ -750,6 +693,40 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             c.drawRoundRect(left, barY, left + bw, barY + bh, 3, 3, pNotifBar);
             pNotifBar.setAlpha(230);
             c.drawRoundRect(left, barY, left + remaining * bw, barY + bh, 3, 3, pNotifBar);
+        }
+
+        /** Photo redimensionnée une seule fois par notification (pas à chaque image) */
+        private Bitmap scaledPicture(Bitmap picture) {
+            if (picture == null)
+                return null;
+            if (picture != pictureSrc) {
+                float drawH = 200;
+                float drawW = picture.getWidth() * (drawH / picture.getHeight());
+                // Limiter la largeur à 75% de l'écran
+                if (drawW > W * 0.75f) {
+                    drawW = W * 0.75f;
+                    drawH = picture.getHeight() * (drawW / picture.getWidth());
+                }
+                pictureScaled = Bitmap.createScaledBitmap(picture, (int) drawW, (int) drawH, true);
+                pictureSrc = picture;
+            }
+            return pictureScaled;
+        }
+
+        /** Mise en page du texte, refaite seulement quand le texte change */
+        private StaticLayout notifTextLayout(String text) {
+            if (text == null || text.isEmpty())
+                return null;
+            int textWidth = (int) (W * 0.75f);
+            if (!text.equals(notifTextSrc) || notifTextLayout.getWidth() != textWidth) {
+                notifTextLayout = StaticLayout.Builder
+                        .obtain(text, 0, text.length(), pNotifText, textWidth)
+                        .setAlignment(Layout.Alignment.ALIGN_CENTER)
+                        .setMaxLines(4)
+                        .build();
+                notifTextSrc = text;
+            }
+            return notifTextLayout;
         }
 
         // --- PAINTS ---
@@ -764,8 +741,6 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             setupText(pGoal, COL_STEPS, 24, normal);
             setupText(pHealth, COL_HEALTH, 26, bold);
             setupText(pTime, COL_WHITE, 80, bold);
-            setupText(pTimeSec, COL_WHITE, 32, normal);
-            pTimeSec.setTextAlign(Paint.Align.LEFT);
             setupText(pInfo, COL_VIOLET, 32, bold);
             setupText(pDate, COL_WHITE, 32, bold);
             setupText(pBattTxt, COL_BLUE, 32, bold);
