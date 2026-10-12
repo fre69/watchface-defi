@@ -4,16 +4,14 @@ import android.app.PendingIntent;
 import android.graphics.Bitmap;
 
 public final class NotificationHolder {
-    /** Durée d'affichage de la notification (ms) */
-    public static final long DISPLAY_DURATION_MS = 60_000;
-
     private static String appName = "";
     private static String title = "";
     private static String text = "";
     private static Bitmap icon = null;
     private static Bitmap picture = null;
     private static PendingIntent contentIntent = null;
-    private static long timestamp = 0;
+    /** Bulle affichée jusqu'à fermeture par l'utilisateur (l'écran ne s'allume pas tout seul) */
+    private static boolean active = false;
     /** Prévenu à chaque nouvelle notification (le cadran ne se redessine qu'une fois par minute) */
     private static Runnable onChange = null;
 
@@ -30,15 +28,22 @@ public final class NotificationHolder {
             icon = icn;
             picture = pic;
             contentIntent = intent;
-            timestamp = System.currentTimeMillis();
+            active = true;
             listener = onChange;
         }
         if (listener != null)
             listener.run();
     }
 
+    /** Ferme la bulle (appui sur le cadran) */
+    public static synchronized void dismiss() {
+        active = false;
+        picture = null;
+        contentIntent = null;
+    }
+
     public static synchronized boolean isActive() {
-        return timestamp > 0 && (System.currentTimeMillis() - timestamp) < DISPLAY_DURATION_MS;
+        return active;
     }
 
     public static synchronized String getAppName() {
@@ -63,9 +68,5 @@ public final class NotificationHolder {
 
     public static synchronized PendingIntent getContentIntent() {
         return contentIntent;
-    }
-
-    public static synchronized long getTimestamp() {
-        return timestamp;
     }
 }

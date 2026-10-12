@@ -28,6 +28,12 @@ public class DefiNotificationListenerService extends NotificationListenerService
             return;
 
         Notification notif = sbn.getNotification();
+        // Notifications de service (« Batterie / Santé en cours d'exécution », séance,
+        // média) : pas de bulle. Les services OnePlus ne posent que FOREGROUND_SERVICE
+        // et NO_CLEAR, sans ONGOING_EVENT. Résumés de groupe : doublons.
+        if ((notif.flags & (Notification.FLAG_ONGOING_EVENT | Notification.FLAG_FOREGROUND_SERVICE
+                | Notification.FLAG_NO_CLEAR | Notification.FLAG_GROUP_SUMMARY)) != 0)
+            return;
         Bundle extras = notif.extras;
 
         // App name

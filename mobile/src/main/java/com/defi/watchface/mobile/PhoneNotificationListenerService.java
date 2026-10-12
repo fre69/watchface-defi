@@ -36,8 +36,10 @@ public class PhoneNotificationListenerService extends NotificationListenerServic
         if (sbn.getPackageName().equals(getPackageName())) return;
 
         Notification notif = sbn.getNotification();
-        // Skip ongoing notifications (music players, etc.)
-        if ((notif.flags & Notification.FLAG_ONGOING_EVENT) != 0) return;
+        // Skip service notifications (music players, apps running in background...)
+        // and group summaries (duplicates of the individual notifications)
+        if ((notif.flags & (Notification.FLAG_ONGOING_EVENT | Notification.FLAG_FOREGROUND_SERVICE
+                | Notification.FLAG_NO_CLEAR | Notification.FLAG_GROUP_SUMMARY)) != 0) return;
 
         Bundle extras = notif.extras;
 

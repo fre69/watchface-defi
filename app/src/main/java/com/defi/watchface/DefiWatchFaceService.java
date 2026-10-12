@@ -244,16 +244,20 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             @Override
             public void onTapEvent(int tapType, @NonNull TapEvent tapEvent,
                     ComplicationSlot complicationSlot) {
-                if (tapType == TapType.UP && NotificationHolder.isActive()) {
-                    android.app.PendingIntent intent = NotificationHolder.getContentIntent();
-                    if (intent != null) {
-                        try {
-                            intent.send();
-                        } catch (android.app.PendingIntent.CanceledException e) {
-                            Log.w(TAG, "Notification intent cancelled", e);
-                        }
+                if (tapType != TapType.UP || !NotificationHolder.isActive())
+                    return;
+                // Tout appui ferme la bulle ; hors du bouton ✕, il ouvre aussi
+                // la notification quand elle en porte l'action (notifs locales)
+                android.app.PendingIntent intent = NotificationHolder.getContentIntent();
+                if (intent != null && !renderer.isOnCloseButton(tapEvent.getXPos(), tapEvent.getYPos())) {
+                    try {
+                        intent.send();
+                    } catch (android.app.PendingIntent.CanceledException e) {
+                        Log.w(TAG, "Notification intent cancelled", e);
                     }
                 }
+                NotificationHolder.dismiss();
+                renderer.invalidate();
             }
         });
         return Futures.immediateFuture(watchFace);
@@ -278,10 +282,9 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         private static final int STEP_GOAL = 10000;
         private static final int CAL_GOAL = 800;
 
-        // Une image par minute (pas de secondes) ; une par seconde seulement
-        // pendant la bulle notification, pour la barre de décompte
-        private static final long REFRESH_NORMAL_MS = 60_000L;
-        private static final long REFRESH_NOTIF_MS = 1_000L;
+        // Une image par minute (pas de secondes) ; une nouvelle notification
+        // ou sa fermeture redessinent aussitôt
+        private static final long REFRESH_MS = 60_000L;
 
         private final ComplicationSlotsManager complMgr;
         private final BatteryManager batteryMgr;
@@ -321,14 +324,20 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         private final Paint pNotifApp = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint pNotifTitle = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final TextPaint pNotifText = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint pNotifBar = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint pCloseBg = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint pCloseX = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        // Bouton ✕ de la bulle (fractions de l'écran) : au-dessus de l'éclair de
+        // charge et des points d'indication que le système dessine en bas
+        private static final float CLOSE_Y = 0.835f;
+        private static final float CLOSE_RADIUS = 0.05f;
 
         DefiRenderer(@NonNull SurfaceHolder holder,
                 @NonNull WatchState watchState,
                 @NonNull CurrentUserStyleRepository styleRepo,
                 @NonNull ComplicationSlotsManager complMgr) {
             super(holder, styleRepo, watchState, CanvasType.HARDWARE,
-                    REFRESH_NORMAL_MS, false);
+                    REFRESH_MS, false);
             this.complMgr = complMgr;
             batteryMgr = (BatteryManager) getSystemService(BATTERY_SERVICE);
             initPaints();
@@ -364,10 +373,6 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
 
             boolean ambient = getRenderParameters().getDrawMode() == DrawMode.AMBIENT;
             boolean notif = !ambient && NotificationHolder.isActive();
-
-            long refresh = notif ? REFRESH_NOTIF_MS : REFRESH_NORMAL_MS;
-            if (getInteractiveDrawModeUpdateDelayMillis() != refresh)
-                setInteractiveDrawModeUpdateDelayMillis(refresh);
 
             int battPct = batteryMgr.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY);
 
@@ -683,16 +688,20 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
                 c.restore();
             }
 
-            // Barre de countdown (temps restant)
-            long elapsed = System.currentTimeMillis() - NotificationHolder.getTimestamp();
-            float remaining = Math.max(0, 1f - (elapsed / (float) NotificationHolder.DISPLAY_DURATION_MS));
-            float bw = W * 0.50f, bh = 6;
-            float left = CX - bw / 2f;
-            float barY = y(0.85f);
-            pNotifBar.setAlpha(75);
-            c.drawRoundRect(left, barY, left + bw, barY + bh, 3, 3, pNotifBar);
-            pNotifBar.setAlpha(230);
-            c.drawRoundRect(left, barY, left + remaining * bw, barY + bh, 3, 3, pNotifBar);
+            // Bouton ✕ : la bulle reste jusqu'à ce qu'on la ferme
+            float r = W * CLOSE_RADIUS;
+            float cy = y(CLOSE_Y);
+            c.drawCircle(CX, cy, r, pCloseBg);
+            float k = r * 0.4f;
+            c.drawLine(CX - k, cy - k, CX + k, cy + k, pCloseX);
+            c.drawLine(CX - k, cy + k, CX + k, cy - k, pCloseX);
+        }
+
+        /** Zone d'appui du bouton ✕, plus large que son dessin pour un doigt */
+        boolean isOnCloseButton(int x, int y) {
+            float dx = x - CX, dy = y - y(CLOSE_Y);
+            float hit = W * CLOSE_RADIUS * 2f;
+            return dx * dx + dy * dy <= hit * hit;
         }
 
         /** Photo redimensionnée une seule fois par notification (pas à chaque image) */
@@ -762,7 +771,8 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             pNotifText.setTextSize(28);
             pNotifText.setTypeface(normal);
             pNotifText.setTextAlign(Paint.Align.LEFT);
-            pNotifBar.setColor(COL_VIOLET);
+            pCloseBg.setColor(COL_SEP);
+            setupStroke(pCloseX, COL_WHITE, 4);
         }
 
         private void setupStroke(Paint p, int c, float w) {
