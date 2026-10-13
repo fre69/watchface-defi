@@ -282,9 +282,10 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         private static final int STEP_GOAL = 10000;
         private static final int CAL_GOAL = 800;
 
-        // Une image par minute (pas de secondes) ; une nouvelle notification
-        // ou sa fermeture redessinent aussitôt
-        private static final long REFRESH_MS = 60_000L;
+        // Une image par minute (pas de secondes) ; toutes les 5 s pendant la
+        // bulle, pour le décompte. Nouvelle notification ou fermeture : aussitôt
+        private static final long REFRESH_NORMAL_MS = 60_000L;
+        private static final long REFRESH_NOTIF_MS = 5_000L;
 
         private final ComplicationSlotsManager complMgr;
         private final BatteryManager batteryMgr;
@@ -293,6 +294,7 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         private int W;
         private final RectF arcOuter = new RectF();
         private final RectF arcInner = new RectF();
+        private final RectF closeRing = new RectF();
 
         // --- Caches : recalculés seulement quand leur source change ---
         private ComplicationData weatherIconSrc;
@@ -326,6 +328,7 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         private final TextPaint pNotifText = new TextPaint(Paint.ANTI_ALIAS_FLAG);
         private final Paint pCloseBg = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint pCloseX = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint pCloseRing = new Paint(Paint.ANTI_ALIAS_FLAG);
 
         // Bouton ✕ de la bulle (fractions de l'écran) : au-dessus de l'éclair de
         // charge et des points d'indication que le système dessine en bas
@@ -337,7 +340,7 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
                 @NonNull CurrentUserStyleRepository styleRepo,
                 @NonNull ComplicationSlotsManager complMgr) {
             super(holder, styleRepo, watchState, CanvasType.HARDWARE,
-                    REFRESH_MS, false);
+                    REFRESH_NORMAL_MS, false);
             this.complMgr = complMgr;
             batteryMgr = (BatteryManager) getSystemService(BATTERY_SERVICE);
             initPaints();
@@ -373,6 +376,10 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
 
             boolean ambient = getRenderParameters().getDrawMode() == DrawMode.AMBIENT;
             boolean notif = !ambient && NotificationHolder.isActive();
+
+            long refresh = notif ? REFRESH_NOTIF_MS : REFRESH_NORMAL_MS;
+            if (getInteractiveDrawModeUpdateDelayMillis() != refresh)
+                setInteractiveDrawModeUpdateDelayMillis(refresh);
 
             int battPct = batteryMgr.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY);
 
@@ -688,10 +695,13 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
                 c.restore();
             }
 
-            // Bouton ✕ : la bulle reste jusqu'à ce qu'on la ferme
+            // Bouton ✕, cerclé du temps d'affichage restant
             float r = W * CLOSE_RADIUS;
             float cy = y(CLOSE_Y);
             c.drawCircle(CX, cy, r, pCloseBg);
+            float rr = r + 5;
+            closeRing.set(CX - rr, cy - rr, CX + rr, cy + rr);
+            c.drawArc(closeRing, -90, 360 * NotificationHolder.getRemaining(), false, pCloseRing);
             float k = r * 0.4f;
             c.drawLine(CX - k, cy - k, CX + k, cy + k, pCloseX);
             c.drawLine(CX - k, cy + k, CX + k, cy - k, pCloseX);
@@ -773,6 +783,7 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             pNotifText.setTextAlign(Paint.Align.LEFT);
             pCloseBg.setColor(COL_SEP);
             setupStroke(pCloseX, COL_WHITE, 4);
+            setupStroke(pCloseRing, COL_VIOLET, 4);
         }
 
         private void setupStroke(Paint p, int c, float w) {

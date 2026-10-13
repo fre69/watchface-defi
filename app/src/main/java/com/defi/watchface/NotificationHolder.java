@@ -4,14 +4,16 @@ import android.app.PendingIntent;
 import android.graphics.Bitmap;
 
 public final class NotificationHolder {
+    /** Durée d'affichage de la bulle (ms), sauf fermeture plus tôt par ✕ */
+    public static final long DISPLAY_DURATION_MS = 60_000;
+
     private static String appName = "";
     private static String title = "";
     private static String text = "";
     private static Bitmap icon = null;
     private static Bitmap picture = null;
     private static PendingIntent contentIntent = null;
-    /** Bulle affichée jusqu'à fermeture par l'utilisateur (l'écran ne s'allume pas tout seul) */
-    private static boolean active = false;
+    private static long timestamp = 0;
     /** Prévenu à chaque nouvelle notification (le cadran ne se redessine qu'une fois par minute) */
     private static Runnable onChange = null;
 
@@ -28,7 +30,7 @@ public final class NotificationHolder {
             icon = icn;
             picture = pic;
             contentIntent = intent;
-            active = true;
+            timestamp = System.currentTimeMillis();
             listener = onChange;
         }
         if (listener != null)
@@ -37,13 +39,21 @@ public final class NotificationHolder {
 
     /** Ferme la bulle (appui sur le cadran) */
     public static synchronized void dismiss() {
-        active = false;
+        timestamp = 0;
         picture = null;
         contentIntent = null;
     }
 
     public static synchronized boolean isActive() {
-        return active;
+        return timestamp > 0 && (System.currentTimeMillis() - timestamp) < DISPLAY_DURATION_MS;
+    }
+
+    /** Part du temps d'affichage restante, de 1 (arrivée) à 0 (expiration) */
+    public static synchronized float getRemaining() {
+        if (timestamp == 0)
+            return 0f;
+        long elapsed = System.currentTimeMillis() - timestamp;
+        return Math.max(0f, 1f - elapsed / (float) DISPLAY_DURATION_MS);
     }
 
     public static synchronized String getAppName() {
