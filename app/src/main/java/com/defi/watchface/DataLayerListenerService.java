@@ -39,6 +39,7 @@ public class DataLayerListenerService extends WearableListenerService {
             Bitmap picture = loadAssetBitmap(map.getAsset("picture"));
 
             NotificationHolder.set(appName, title, text, icon, picture, null);
+            ScreenWaker.wake(this);
         }
     }
 

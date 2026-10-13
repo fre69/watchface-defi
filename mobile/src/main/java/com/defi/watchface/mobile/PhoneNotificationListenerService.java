@@ -112,9 +112,10 @@ public class PhoneNotificationListenerService extends NotificationListenerServic
                     mapRequest.getDataMap().putAsset("picture", bitmapToAsset(scaled, false));
                 }
 
-                // Pas de setUrgent() : le bridge OHealth réveille déjà la montre,
-                // un envoi urgent forcerait un second réveil du Snapdragon
+                // Urgent : la montre allume son écran à la réception (lever de
+                // poignet coupé) ; sans urgence, Google tolère 30 min de retard
                 PutDataRequest request = mapRequest.asPutDataRequest();
+                request.setUrgent();
 
                 DataClient dataClient = Wearable.getDataClient(this);
                 Tasks.await(dataClient.putDataItem(request));

@@ -87,5 +87,6 @@ public class DefiNotificationListenerService extends NotificationListenerService
 
         Log.d(TAG, "Notification: " + appName + " / " + title + " / " + text);
         NotificationHolder.set(appName, title, text, iconBmp, picture, contentIntent);
+        ScreenWaker.wake(this);
     }
 }

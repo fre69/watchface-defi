@@ -1,7 +1,8 @@
 # CLAUDE.md — Projet watchface-defi
 
 ## Contexte
-Cadran personnalisé "myPersonnalCadran" pour **OnePlus Watch 2** (Wear OS 4, écran rond 466x466px).
+Cadran personnalisé "myPersonnalCadran" pour **OnePlus Watch 2** (Wear OS 5 / Android 14 depuis la
+mise à jour OnePlus — le projet a démarré sous Wear OS 4 —, écran rond 466x466px).
 
 ## Architecture
 
@@ -35,12 +36,29 @@ sans transiter par le `NotificationManager` Android. Le `NotificationListenerSer
 
 **Solution** : module `mobile` (app compagnon téléphone) qui capture les notifs côté téléphone
 et les envoie à la montre via la **Wearable DataLayer API** (`play-services-wearable`).
-- Le MCU/OHealth bridge reste actif pour réveiller l'écran (impossible de wake la montre autrement)
-- La DataLayer envoie le contenu enrichi (titre, texte, picture) en parallèle
+- La DataLayer envoie le contenu enrichi (titre, texte, picture), en **urgent** (`setUrgent()`)
 - Le cadran affiche sa bulle notification avec les données DataLayer
+- `ScreenWaker` allume l'écran à la réception (sauf Ne pas déranger), ce qui permet de couper
+  le lever de poignet
 
-**Limitation MCU** : le processeur principal (AP) est complètement coupé en veille, seul le MCU est alimenté.
-`PowerManager.WakeLock` ne fonctionne PAS pour réveiller l'écran — OnePlus a verrouillé cette fonctionnalité.
+### Allumage de l'écran — ce que fait vraiment le firmware (vérifié le 2026-10-13, Wear OS 5)
+Lu dans le code décompilé (`wear-services.jar`, `services.jar`, `HeyClockworkSysUi.apk`) et mesuré :
+- **Un cadran tiers interdit le mode co-processeur** : la SysUI pose `Settings.Global bs_third_wf=1`,
+  et `BmState` refuse alors de basculer l'écran vers le MCU. La montre reste en `BM_ANDROID_STATE`
+  (`adb shell dumpsys bm.manager -ms`), écran éteint compris : c'est une veille Android ordinaire.
+- **La SysUI n'allume l'écran pour une notification que si l'AOD est affiché ou si le MCU tient
+  l'écran** (`ScreenWakeupController.requestWakeup`). Cadran tiers + AOD coupé ⇒ jamais : d'où la
+  dépendance au lever de poignet.
+- **Un WakeLock `SCREEN_BRIGHT | ACQUIRE_CAUSES_WAKEUP` fonctionne** (permission `WAKE_LOCK` seule) :
+  `PowerGroup` reçoit `WAKE_REASON_APPLICATION` ; en mode MCU il appellerait même
+  `BmManager.switchToAndroidIfNeeded`. `TURN_SCREEN_ON` n'est pas exigée
+  (`REQUIRE_TURN_SCREEN_ON_PERMISSION` : `enableSinceTargetSdk=10000`).
+- Lever de poignet : `Settings.Global ambient_tilt_to_wake` (0/1), surveillé en direct et synchronisé
+  vers le MCU (`BmSettingsChioce`). Toucher pour réveiller : `Settings.System touch_to_wake_switch`.
+  `secure doze_pulse_on_notifications` et `system enable_notification_without_tap_or_tilt` ne sont
+  lus par aucun composant de la montre : sans effet.
+- En charge (USB compris), la montre ne quitte jamais l'état Android (`frw: charging`) ; pour tester
+  la veille sans débrancher : `adb shell dumpsys battery unplug` (puis `dumpsys battery reset`).
 
 ### Fichiers clés
 
@@ -49,6 +67,7 @@ et les envoie à la montre via la **Wearable DataLayer API** (`play-services-wea
 - `app/src/main/java/com/defi/watchface/DataLayerListenerService.java` — Réception notifs DataLayer
 - `app/src/main/java/com/defi/watchface/DefiNotificationListenerService.java` — Listener notifs locales
 - `app/src/main/java/com/defi/watchface/NotificationHolder.java` — Données notification partagées
+- `app/src/main/java/com/defi/watchface/ScreenWaker.java` — Allumage de l'écran à l'arrivée d'une notif
 - `app/src/main/AndroidManifest.xml` — Déclaration des services
 - `app/build.gradle` — Dépendances (watchface, watchface-guava, guava, play-services-wearable)
 
@@ -113,16 +132,14 @@ adb shell pm grant com.defi.watchface.distance android.permission.ACTIVITY_RECOG
 adb shell pm grant com.defi.watchface.distance com.google.android.wearable.permission.RECEIVE_COMPLICATION_DATA
 
 # --- RÉGLAGES MONTRE (options absentes des paramètres UI) ---
-# Désactiver les notifications heads-up (popup par-dessus l'écran)
-# Les notifs restent dans le tiroir + s'affichent sur le cadran via la bulle
-adb shell settings put global heads_up_notifications_enabled 0
-adb shell settings put secure notification_bubbles 0
+# ⚠️ heads_up_notifications_enabled / notification_bubbles : la SysUI OnePlus ne lit
+# pas ces clés (vérifié dans HeyClockworkSysUi.apk), elles ne coupent aucun popup
 
-# Réactiver les heads-up si besoin
-adb shell settings put global heads_up_notifications_enabled 1
+# Lever de poignet : 0 = coupé (ScreenWaker allume l'écran sur notification), 1 = actif
+adb shell settings put global ambient_tilt_to_wake 0
 
-# Désactiver le réveil écran sur notification (optionnel)
-adb shell settings put secure doze_pulse_on_notifications 0
+# État de bascule écran Android / co-processeur (BM_ANDROID_STATE attendu avec ce cadran)
+adb shell dumpsys bm.manager -ms
 ```
 
 ## Configuration technique
@@ -140,11 +157,16 @@ adb shell settings put secure doze_pulse_on_notifications 0
 - **Notifications bridgées** : Le `NotificationListenerService` côté montre ne reçoit pas
   les notifs bridgées via MCU/OHealth. Résolu avec un module `mobile` compagnon qui capture
   les notifs sur le téléphone et les envoie via Wearable DataLayer API.
+- **Allumage de l'écran sans lever de poignet** : `ScreenWaker` (WakeLock `ACQUIRE_CAUSES_WAKEUP`)
+  à l'arrivée d'une notification. L'ancien constat « WakeLock inopérant, AP coupé » (mars 2026,
+  Wear OS 4) est faux sur Wear OS 5 : cf. « Allumage de l'écran » plus haut.
 
 ## Problèmes connus
 - **Sommeil/Stress** : Pas de ComplicationProvider dédié trouvé sur la montre. `DailyActivityComplicationService` renvoie les pas au lieu de l'activité complète.
 - **Popup notifications OHealth** : Impossible de désactiver les popups du SysUI OnePlus via ADB (`heads_up_notifications_enabled`, `notification_bubbles`). Le SysUI gère l'affichage directement depuis le MCU, indépendamment des réglages Android.
-- **Wake screen** : `PowerManager.WakeLock` ne fonctionne pas pour réveiller l'écran (AP coupé en veille, MCU seul alimenté). Seul le bridge OHealth/MCU peut wake l'écran.
+- **Fiche système par-dessus le cadran** : pour une notification *locale* à la montre, la SysUI
+  affiche sa propre fiche (titre, texte, « Effacer ») quand l'écran s'allume. Les notifs du
+  téléphone reçues par DataLayer n'ont pas de notification locale : c'est la bulle du cadran.
 
 ## Historique des tentatives
 1. **WFF XML déclaratif** : ne fonctionne pas sur OnePlus Watch 2 (Wear OS 4 ne supporte pas WFF tiers)
