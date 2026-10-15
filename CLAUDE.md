@@ -138,6 +138,11 @@ adb shell pm grant com.defi.watchface.distance com.google.android.wearable.permi
 # Lever de poignet : 0 = coupé (ScreenWaker allume l'écran sur notification), 1 = actif
 adb shell settings put global ambient_tilt_to_wake 0
 
+# Écran de charge plein écran (fenêtre SysUI.Charging de com.heytap.wearable.offload) :
+# aucun réglage dans l'UI. Ce drapeau d'usine n'est lu que par ChargeManager.startCharge()
+# (vérifié dans HeyOffload.apk) et ne bloque que cet écran. Rétablir : settings delete …
+adb shell settings put global aging_test_systemui 1
+
 # État de bascule écran Android / co-processeur (BM_ANDROID_STATE attendu avec ce cadran)
 adb shell dumpsys bm.manager -ms
 ```
