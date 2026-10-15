@@ -785,7 +785,7 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             if (pic == null)
                 return;
             carRect.set(CX + W * CAR_L, y(CAR_T), CX + W * CAR_R, y(CAR_B));
-            float radius = W * 0.018f;
+            float radius = W * 0.04f;
             Bitmap thumb = carThumb(pic, Math.round(carRect.width()), Math.round(carRect.height()));
             c.save();
             carClip.reset();
