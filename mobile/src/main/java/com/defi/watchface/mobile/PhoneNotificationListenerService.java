@@ -26,6 +26,9 @@ public class PhoneNotificationListenerService extends NotificationListenerServic
     private static final String TAG = "DefiPhoneNotif";
     private static final String NOTIF_PATH = "/notification";
 
+    /** Clé de la dernière notification envoyée, celle que signale la pastille du cadran */
+    private String lastSentKey = null;
+
     @Override
     public void onListenerConnected() {
         Log.d(TAG, "Phone notification listener connected");
@@ -91,17 +94,29 @@ public class PhoneNotificationListenerService extends NotificationListenerServic
         Log.d(TAG, "Sending to watch: " + appName + " / " + title + " / " + text
                 + " picture=" + (picture != null));
 
-        sendToWatch(appName, title, text, iconBmp, picture);
+        lastSentKey = sbn.getKey();
+        sendToWatch(sbn.getKey(), appName, title, text, iconBmp, picture);
     }
 
-    private void sendToWatch(String appName, String title, String text,
+    @Override
+    public void onNotificationRemoved(StatusBarNotification sbn) {
+        // Lue ou effacée sur le téléphone : la pastille du cadran n'a plus lieu d'être
+        if (lastSentKey == null || !lastSentKey.equals(sbn.getKey())) return;
+        lastSentKey = null;
+        Log.d(TAG, "Signaled notification removed, clearing watch: " + sbn.getKey());
+        sendClearToWatch(sbn.getKey());
+    }
+
+    private void sendToWatch(String key, String appName, String title, String text,
                              Bitmap icon, Bitmap picture) {
         new Thread(() -> {
             try {
                 PutDataMapRequest mapRequest = PutDataMapRequest.create(NOTIF_PATH);
+                mapRequest.getDataMap().putString("key", key);
                 mapRequest.getDataMap().putString("appName", appName);
                 mapRequest.getDataMap().putString("title", title);
                 mapRequest.getDataMap().putString("text", text);
+                mapRequest.getDataMap().putBoolean("cleared", false);
                 mapRequest.getDataMap().putLong("timestamp", System.currentTimeMillis());
 
                 if (icon != null) {
@@ -122,6 +137,27 @@ public class PhoneNotificationListenerService extends NotificationListenerServic
                 Log.d(TAG, "DataItem sent to watch");
             } catch (Exception e) {
                 Log.e(TAG, "Failed to send to watch", e);
+            }
+        }).start();
+    }
+
+    /**
+     * Même chemin que la notification : l'élément DataLayer garde le dernier état
+     * (montre hors de portée : elle ne reçoit que l'effacement, sans allumer l'écran)
+     */
+    private void sendClearToWatch(String key) {
+        new Thread(() -> {
+            try {
+                PutDataMapRequest mapRequest = PutDataMapRequest.create(NOTIF_PATH);
+                mapRequest.getDataMap().putString("key", key);
+                mapRequest.getDataMap().putBoolean("cleared", true);
+                mapRequest.getDataMap().putLong("timestamp", System.currentTimeMillis());
+                PutDataRequest request = mapRequest.asPutDataRequest();
+                request.setUrgent();
+                Tasks.await(Wearable.getDataClient(this).putDataItem(request));
+                Log.d(TAG, "Clear sent to watch");
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to send clear to watch", e);
             }
         }).start();
     }

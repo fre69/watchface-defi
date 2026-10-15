@@ -39,6 +39,11 @@ et les envoie à la montre via la **Wearable DataLayer API** (`play-services-wea
 - La DataLayer envoie le contenu enrichi (titre, texte, picture), en **urgent** (`setUrgent()`)
 - Le cadran signale la notification par une **pastille** (icône de l'app, compteur, à droite de
   l'heure) ; un appui sur la pastille ou sur l'heure ouvre la bulle (60 s, fermable par ✕)
+- Notification lue ou effacée sur le téléphone : le module mobile réécrit l'élément `/notification`
+  avec `cleared=true` et la clé de la notif (urgent) ; la montre retire la pastille si la clé est
+  celle qu'elle signale, **sans allumer l'écran** et sans fermer une bulle ouverte. Même chose pour
+  une notification locale effacée sur la montre (clés préfixées `phone:` / `local:` dans
+  `NotificationHolder`)
 - `ScreenWaker` allume l'écran à la réception (sauf Ne pas déranger), ce qui permet de couper
   le lever de poignet
 

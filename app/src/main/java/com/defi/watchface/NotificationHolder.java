@@ -5,12 +5,15 @@ import android.graphics.Bitmap;
 
 /**
  * Dernière notification reçue. Elle attend, signalée par une pastille sur le
- * cadran, jusqu'à ce qu'on la touche : la bulle s'ouvre alors pour 60 s.
+ * cadran, jusqu'à ce qu'on la touche (la bulle s'ouvre alors pour 60 s) ou
+ * qu'elle soit lue ou effacée sur le téléphone.
  */
 public final class NotificationHolder {
     /** Durée d'affichage de la bulle (ms), sauf fermeture plus tôt par ✕ */
     public static final long DISPLAY_DURATION_MS = 60_000;
 
+    /** Origine et clé de la notification (« phone:… », « local:… ») */
+    private static String key = null;
     private static String appName = "";
     private static String title = "";
     private static String text = "";
@@ -21,16 +24,18 @@ public final class NotificationHolder {
     private static long openedAt = 0;
     /** Notifications reçues depuis la dernière ouverture (0 : pas de pastille) */
     private static int pendingCount = 0;
-    /** Prévenu à chaque nouvelle notification (le cadran ne se redessine qu'une fois par minute) */
+    /** Prévenu à chaque changement de la pastille (le cadran ne se redessine qu'une fois par minute) */
     private static Runnable onChange = null;
 
     public static synchronized void setOnChangeListener(Runnable listener) {
         onChange = listener;
     }
 
-    public static void set(String app, String t, String txt, Bitmap icn, Bitmap pic, PendingIntent intent) {
+    public static void set(String k, String app, String t, String txt, Bitmap icn, Bitmap pic,
+            PendingIntent intent) {
         Runnable listener;
         synchronized (NotificationHolder.class) {
+            key = k;
             appName = app;
             title = t;
             text = txt;
@@ -51,6 +56,22 @@ public final class NotificationHolder {
             return;
         openedAt = System.currentTimeMillis();
         pendingCount = 0;
+    }
+
+    /**
+     * Retire la pastille si la notification lue ou effacée est celle qu'elle
+     * signale. Une bulle déjà ouverte reste affichée jusqu'à sa fermeture.
+     */
+    public static void clearPending(String k) {
+        Runnable listener;
+        synchronized (NotificationHolder.class) {
+            if (pendingCount == 0 || !k.equals(key))
+                return;
+            pendingCount = 0;
+            listener = onChange;
+        }
+        if (listener != null)
+            listener.run();
     }
 
     /** Ferme la bulle (appui sur le cadran) */

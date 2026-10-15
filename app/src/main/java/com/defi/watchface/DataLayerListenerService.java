@@ -28,6 +28,15 @@ public class DataLayerListenerService extends WearableListenerService {
             if (!NOTIF_PATH.equals(event.getDataItem().getUri().getPath())) continue;
 
             DataMap map = DataMapItem.fromDataItem(event.getDataItem()).getDataMap();
+            String key = "phone:" + map.getString("key", "");
+
+            // Notification lue ou effacée sur le téléphone : retirer la pastille,
+            // sans allumer l'écran
+            if (map.getBoolean("cleared", false)) {
+                Log.d(TAG, "Notification cleared on phone: " + key);
+                NotificationHolder.clearPending(key);
+                continue;
+            }
 
             String appName = map.getString("appName", "");
             String title = map.getString("title", "");
@@ -38,7 +47,7 @@ public class DataLayerListenerService extends WearableListenerService {
             Bitmap icon = loadAssetBitmap(map.getAsset("icon"));
             Bitmap picture = loadAssetBitmap(map.getAsset("picture"));
 
-            NotificationHolder.set(appName, title, text, icon, picture, null);
+            NotificationHolder.set(key, appName, title, text, icon, picture, null);
             ScreenWaker.wake(this);
         }
     }

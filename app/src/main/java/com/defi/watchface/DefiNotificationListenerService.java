@@ -86,7 +86,13 @@ public class DefiNotificationListenerService extends NotificationListenerService
         PendingIntent contentIntent = notif.contentIntent;
 
         Log.d(TAG, "Notification: " + appName + " / " + title + " / " + text);
-        NotificationHolder.set(appName, title, text, iconBmp, picture, contentIntent);
+        NotificationHolder.set("local:" + sbn.getKey(), appName, title, text, iconBmp, picture, contentIntent);
         ScreenWaker.wake(this);
+    }
+
+    @Override
+    public void onNotificationRemoved(StatusBarNotification sbn) {
+        // Effacée sur la montre (fiche système) : plus de pastille
+        NotificationHolder.clearPending("local:" + sbn.getKey());
     }
 }
