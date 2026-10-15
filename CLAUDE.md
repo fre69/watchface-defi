@@ -37,7 +37,8 @@ sans transiter par le `NotificationManager` Android. Le `NotificationListenerSer
 **Solution** : module `mobile` (app compagnon téléphone) qui capture les notifs côté téléphone
 et les envoie à la montre via la **Wearable DataLayer API** (`play-services-wearable`).
 - La DataLayer envoie le contenu enrichi (titre, texte, picture), en **urgent** (`setUrgent()`)
-- Le cadran affiche sa bulle notification avec les données DataLayer
+- Le cadran signale la notification par une **pastille** (icône de l'app, compteur, à droite de
+  l'heure) ; un appui sur la pastille ou sur l'heure ouvre la bulle (60 s, fermable par ✕)
 - `ScreenWaker` allume l'écran à la réception (sauf Ne pas déranger), ce qui permet de couper
   le lever de poignet
 

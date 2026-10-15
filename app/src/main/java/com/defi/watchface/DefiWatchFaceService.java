@@ -244,8 +244,17 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             @Override
             public void onTapEvent(int tapType, @NonNull TapEvent tapEvent,
                     ComplicationSlot complicationSlot) {
-                if (tapType != TapType.UP || !NotificationHolder.isActive())
+                if (tapType != TapType.UP)
                     return;
+                if (!NotificationHolder.isActive()) {
+                    // Notification en attente : la pastille (ou l'heure) ouvre la bulle
+                    if (NotificationHolder.getPendingCount() > 0
+                            && renderer.isOnBadgeZone(tapEvent.getYPos())) {
+                        NotificationHolder.open();
+                        renderer.invalidate();
+                    }
+                    return;
+                }
                 // Tout appui ferme la bulle ; hors du bouton ✕, il ouvre aussi
                 // la notification quand elle en porte l'action (notifs locales)
                 android.app.PendingIntent intent = NotificationHolder.getContentIntent();
@@ -295,6 +304,7 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         private final RectF arcOuter = new RectF();
         private final RectF arcInner = new RectF();
         private final RectF closeRing = new RectF();
+        private final RectF badgeIcon = new RectF();
 
         // --- Caches : recalculés seulement quand leur source change ---
         private ComplicationData weatherIconSrc;
@@ -329,11 +339,22 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         private final Paint pCloseBg = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint pCloseX = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint pCloseRing = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint pBadgeDot = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint pBadgeCount = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint pBitmap = new Paint(Paint.FILTER_BITMAP_FLAG);
 
         // Bouton ✕ de la bulle (fractions de l'écran) : au-dessus de l'éclair de
         // charge et des points d'indication que le système dessine en bas
         private static final float CLOSE_Y = 0.835f;
         private static final float CLOSE_RADIUS = 0.05f;
+
+        // Pastille de notification en attente, à droite de l'heure
+        private static final float BADGE_DX = 0.335f;
+        private static final float BADGE_Y = 0.442f;
+        private static final float BADGE_RADIUS = 0.06f;
+        // Bande de l'heure, sensible à l'appui tant qu'une notification attend
+        private static final float BADGE_ZONE_TOP = 0.36f;
+        private static final float BADGE_ZONE_BOTTOM = 0.56f;
 
         DefiRenderer(@NonNull SurfaceHolder holder,
                 @NonNull WatchState watchState,
@@ -344,7 +365,7 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             this.complMgr = complMgr;
             batteryMgr = (BatteryManager) getSystemService(BATTERY_SERVICE);
             initPaints();
-            // Afficher la bulle dès réception, sans attendre la minute suivante
+            // Afficher la pastille dès réception, sans attendre la minute suivante
             NotificationHolder.setOnChangeListener(this::postInvalidate);
         }
 
@@ -403,6 +424,9 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
                 drawInfoLine(c, zdt);
                 drawDate(c, zdt);
                 drawBattery(c, battPct);
+                int pending = NotificationHolder.getPendingCount();
+                if (pending > 0)
+                    drawPendingBadge(c, pending);
             }
         }
 
@@ -657,6 +681,33 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             c.drawText(batt + "%", CX, y(0.90f), pBattTxt);
         }
 
+        // --- PASTILLE : notification en attente, ouverte par un appui ---
+        private void drawPendingBadge(Canvas c, int count) {
+            float r = W * BADGE_RADIUS;
+            float bx = CX + W * BADGE_DX, by = y(BADGE_Y);
+            c.drawCircle(bx, by, r, pCloseBg);
+            c.drawCircle(bx, by, r, pCloseRing);
+            Bitmap icon = NotificationHolder.getIcon();
+            if (icon != null) {
+                float h = r * 0.62f;
+                badgeIcon.set(bx - h, by - h, bx + h, by + h);
+                c.drawBitmap(icon, null, badgeIcon, pBitmap);
+            } else {
+                c.drawCircle(bx, by, r * 0.3f, pBadgeDot);
+            }
+            if (count > 1) {
+                float cr = r * 0.45f;
+                float nx = bx + r * 0.75f, ny = by - r * 0.75f;
+                c.drawCircle(nx, ny, cr, pBadgeDot);
+                c.drawText(count > 9 ? "9+" : String.valueOf(count), nx, ny + cr * 0.4f, pBadgeCount);
+            }
+        }
+
+        /** Zone d'appui de la pastille : toute la bande de l'heure, pour un doigt */
+        boolean isOnBadgeZone(int y) {
+            return y >= y(BADGE_ZONE_TOP) && y <= y(BADGE_ZONE_BOTTOM);
+        }
+
         // --- NOTIFICATION MODE ---
         private void drawNotificationMode(Canvas c, ZonedDateTime z) {
             // Heure en petit en haut
@@ -784,6 +835,8 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             pCloseBg.setColor(COL_SEP);
             setupStroke(pCloseX, COL_WHITE, 4);
             setupStroke(pCloseRing, COL_VIOLET, 4);
+            pBadgeDot.setColor(COL_VIOLET);
+            setupText(pBadgeCount, COL_BG, 18, bold);
         }
 
         private void setupStroke(Paint p, int c, float w) {
