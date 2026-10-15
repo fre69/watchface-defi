@@ -384,12 +384,12 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         private static final float BADGE_ZONE_TOP = 0.36f;
         private static final float BADGE_ZONE_BOTTOM = 0.56f;
 
-        // Vignette de la dernière voiture, à gauche de l'heure (x relatif au
-        // centre, en fractions de l'écran) : symétrique de la pastille
-        private static final float CAR_L = -0.42f;
-        private static final float CAR_R = -0.223f;
-        private static final float CAR_T = 0.375f;
-        private static final float CAR_B = 0.53f;
+        // Vignette ronde de la dernière voiture, à gauche de l'heure (centre x
+        // relatif au centre de l'écran, en fractions de l'écran) : symétrique de la pastille
+        private static final float CAR_DX = -0.322f;
+        private static final float CAR_Y = 0.452f;
+        private static final float CAR_RADIUS = 0.082f;
+        private static final int COL_CAR_BORDER = 0xFFD0D0D0;
         /** Durée d'affichage de la photo agrandie, sauf appui plus tôt */
         private static final long CAR_VIEW_MS = 30_000L;
 
@@ -784,24 +784,23 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             Bitmap pic = HomeData.getCarPicture();
             if (pic == null)
                 return;
-            carRect.set(CX + W * CAR_L, y(CAR_T), CX + W * CAR_R, y(CAR_B));
-            float radius = W * 0.04f;
+            float cx = CX + W * CAR_DX, cy = y(CAR_Y), r = W * CAR_RADIUS;
+            carRect.set(cx - r, cy - r, cx + r, cy + r);
             Bitmap thumb = carThumb(pic, Math.round(carRect.width()), Math.round(carRect.height()));
             c.save();
             carClip.reset();
-            carClip.addRoundRect(carRect, radius, radius, android.graphics.Path.Direction.CW);
+            carClip.addCircle(cx, cy, r, android.graphics.Path.Direction.CW);
             c.clipPath(carClip);
             c.drawBitmap(thumb, carRect.left, carRect.top, pBitmap);
-            // Heure du passage sur un bandeau sombre en bas de la photo
-            float band = W * 0.045f;
+            // Heure du passage sur un bandeau sombre en bas du cercle
+            float band = W * 0.05f;
             c.drawRect(carRect.left, carRect.bottom - band, carRect.right, carRect.bottom, pCarBand);
-            pCarTime.setTextSize(band * 0.8f);
-            c.drawText(hhmm(HomeData.getCarPassedAt()), carRect.centerX(),
-                    carRect.bottom - band * 0.22f, pCarTime);
+            pCarTime.setTextSize(band * 0.72f);
+            c.drawText(hhmm(HomeData.getCarPassedAt()), cx, carRect.bottom - band * 0.3f, pCarTime);
             c.restore();
-            // Cadre orange tant que le véhicule est sur le chemin
-            pCarBorder.setColor(HomeData.isCarPresent() ? COL_ALERT_ORANGE : COL_BLUE);
-            c.drawRoundRect(carRect, radius, radius, pCarBorder);
+            // Cerclage orange tant que le véhicule est sur le chemin
+            pCarBorder.setColor(HomeData.isCarPresent() ? COL_ALERT_ORANGE : COL_CAR_BORDER);
+            c.drawCircle(cx, cy, r, pCarBorder);
         }
 
         /** Photo recadrée au centre aux dimensions de la vignette, une fois par photo */
@@ -822,9 +821,10 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         boolean isOnCarThumb(int x, int y) {
             if (HomeData.getCarPicture() == null)
                 return false;
-            // Zone élargie pour un doigt, jusqu'au bord de l'heure
-            return x >= CX + W * (CAR_L - 0.05f) && x <= CX + W * (CAR_R + 0.02f)
-                    && y >= y(BADGE_ZONE_TOP) && y <= y(BADGE_ZONE_BOTTOM);
+            // Zone élargie pour un doigt
+            float dx = x - (CX + W * CAR_DX), dy = y - y(CAR_Y);
+            float hit = W * (CAR_RADIUS + 0.04f);
+            return dx * dx + dy * dy <= hit * hit;
         }
 
         boolean isCarViewOpen() {
@@ -1067,7 +1067,7 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             setupText(pAlertMark, COL_BG, 24, bold);
             pCarBand.setColor(0x99000000);
             setupText(pCarTime, COL_WHITE, 16, bold);
-            setupStroke(pCarBorder, COL_BLUE, 2);
+            setupStroke(pCarBorder, COL_CAR_BORDER, 2.5f);
         }
 
         private void setupStroke(Paint p, int c, float w) {
