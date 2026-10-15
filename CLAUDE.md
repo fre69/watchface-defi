@@ -47,6 +47,24 @@ et les envoie à la montre via la **Wearable DataLayer API** (`play-services-wea
 - `ScreenWaker` allume l'écran à la réception (sauf Ne pas déranger), ce qui permet de couper
   le lever de poignet
 
+### Données Home Assistant (téléphone → montre)
+L'appli `mobile` garde un WebSocket ouvert vers Home Assistant (`HaLink`, jeton longue durée,
+`subscribe_entities`) et relaie l'état à la montre par la DataLayer ; la montre ne parle jamais à HA
+(moins de batterie, et ça tient même si Wear OS ferme une appli). Le `NotificationListenerService`,
+que le système garde en vie, porte le lien ; reconnexion seule (coupure, réseau retrouvé).
+- **URL et jeton** se saisissent dans l'appli du téléphone (préférences privées, `allowBackup=false`) :
+  jamais dans le dépôt, qui est public. Sans `https://`, l'appli l'ajoute.
+- `/ha/weather` : station de la maison (`sensor.esp_meteo_*`, repli `weather.barcelonne`), ressenti,
+  vent, pluie dans l'heure, vigilance Météo-France. Envoyé au plus toutes les 5 min (sauf changement
+  de vigilance), au moins toutes les 30 min ; au-delà d'1 h sans envoi, le cadran revient à OHealth.
+- `/ha/car` : photo Frigate `image.chemin_car` réduite à 320 px, légende `input_text.derniere_voiture`,
+  présence `binary_sensor.chemin_car_occupancy` (cadre orange). Vignette affichée 24 h, appui = photo
+  en grand 30 s. Heure du passage : `lc` de l'entité, pas `lu` (le jeton de `entity_picture`, renouvelé
+  toutes les 5 min, fait avancer `lu`).
+- Mêmes règles que les tuiles HA Wear OS (`sensor.montre_meteo`, `sensor.montre_bus_chemin` dans
+  `template.yaml` de HA) : couleurs de vigilance `#ffd600`/`#ff9100`/`#ff1744`, ordre des phénomènes.
+- La DataLayer garde le dernier élément de chaque chemin : `HomeData.load()` le relit au démarrage du cadran.
+
 ### Allumage de l'écran — ce que fait vraiment le firmware (vérifié le 2026-10-13, Wear OS 5)
 Lu dans le code décompilé (`wear-services.jar`, `services.jar`, `HeyClockworkSysUi.apk`) et mesuré :
 - **Un cadran tiers interdit le mode co-processeur** : la SysUI pose `Settings.Global bs_third_wf=1`,
@@ -74,12 +92,14 @@ Lu dans le code décompilé (`wear-services.jar`, `services.jar`, `HeyClockworkS
 - `app/src/main/java/com/defi/watchface/DefiNotificationListenerService.java` — Listener notifs locales
 - `app/src/main/java/com/defi/watchface/NotificationHolder.java` — Données notification partagées
 - `app/src/main/java/com/defi/watchface/ScreenWaker.java` — Allumage de l'écran à l'arrivée d'une notif
+- `app/src/main/java/com/defi/watchface/HomeData.java` — Météo de la maison et dernière voiture reçues de HA
 - `app/src/main/AndroidManifest.xml` — Déclaration des services
 - `app/build.gradle` — Dépendances (watchface, watchface-guava, guava, play-services-wearable)
 
 **Module `mobile` (téléphone)** :
 - `mobile/src/main/java/com/defi/watchface/mobile/PhoneNotificationListenerService.java` — Capture notifs + envoi DataLayer
-- `mobile/src/main/java/com/defi/watchface/mobile/MainActivity.java` — Activation du listener
+- `mobile/src/main/java/com/defi/watchface/mobile/HaLink.java` — WebSocket Home Assistant + envoi DataLayer
+- `mobile/src/main/java/com/defi/watchface/mobile/MainActivity.java` — Activation du listener, URL/jeton HA, batterie
 - `mobile/src/main/AndroidManifest.xml`
 - `mobile/build.gradle`
 

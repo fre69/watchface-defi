@@ -25,6 +25,8 @@ public class DataLayerListenerService extends WearableListenerService {
     public void onDataChanged(DataEventBuffer dataEvents) {
         for (DataEvent event : dataEvents) {
             if (event.getType() != DataEvent.TYPE_CHANGED) continue;
+            // Météo et voiture de Home Assistant : affichées sans allumer l'écran
+            if (HomeData.apply(this, event.getDataItem())) continue;
             if (!NOTIF_PATH.equals(event.getDataItem().getUri().getPath())) continue;
 
             DataMap map = DataMapItem.fromDataItem(event.getDataItem()).getDataMap();

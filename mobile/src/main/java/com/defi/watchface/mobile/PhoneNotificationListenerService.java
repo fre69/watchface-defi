@@ -32,6 +32,8 @@ public class PhoneNotificationListenerService extends NotificationListenerServic
     @Override
     public void onListenerConnected() {
         Log.d(TAG, "Phone notification listener connected");
+        // Ce service, que le système garde en vie, porte aussi le lien Home Assistant
+        HaLink.get(this).start();
     }
 
     @Override

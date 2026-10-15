@@ -247,12 +247,19 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
                 if (tapType != TapType.UP)
                     return;
                 if (!NotificationHolder.isActive()) {
-                    // Notification en attente : la pastille (ou l'heure) ouvre la bulle
-                    if (NotificationHolder.getPendingCount() > 0
+                    // Photo de la voiture agrandie : tout appui la ferme
+                    if (renderer.isCarViewOpen()) {
+                        renderer.closeCarView();
+                    } else if (renderer.isOnCarThumb(tapEvent.getXPos(), tapEvent.getYPos())) {
+                        renderer.openCarView();
+                    } else if (NotificationHolder.getPendingCount() > 0
                             && renderer.isOnBadgeZone(tapEvent.getYPos())) {
+                        // Notification en attente : la pastille (ou l'heure) ouvre la bulle
                         NotificationHolder.open();
-                        renderer.invalidate();
+                    } else {
+                        return;
                     }
+                    renderer.invalidate();
                     return;
                 }
                 // Tout appui ferme la bulle ; hors du bouton ✕, il ouvre aussi
@@ -287,6 +294,11 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         private static final int COL_GREY = 0xFFAAAAAA;
         private static final int COL_BLUE = 0xFF66BBFF;
         private static final int COL_SEP = 0xFF2A2A35;
+        // Vigilance Météo-France et véhicule présent : couleurs des templates
+        // sensor.montre_meteo / montre_bus_chemin de Home Assistant
+        private static final int COL_ALERT_YELLOW = 0xFFFFD600;
+        private static final int COL_ALERT_ORANGE = 0xFFFF9100;
+        private static final int COL_ALERT_RED = 0xFFFF1744;
 
         private static final int STEP_GOAL = 10000;
         private static final int CAL_GOAL = 800;
@@ -314,6 +326,16 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         private Bitmap pictureScaled;
         private String notifTextSrc;
         private StaticLayout notifTextLayout;
+        private Bitmap carThumbSrc;
+        private Bitmap carThumb;
+        private Bitmap carViewSrc;
+        private Bitmap carViewScaled;
+        private final RectF carRect = new RectF();
+        private final android.graphics.Path carClip = new android.graphics.Path();
+        private final android.graphics.Path alertPath = new android.graphics.Path();
+
+        /** Ouverture de la photo agrandie de la voiture (0 : fermée) */
+        private long carViewOpenedAt = 0;
 
         // --- Paints ---
         private final Paint pArcSteps = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -342,6 +364,12 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         private final Paint pBadgeDot = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint pBadgeCount = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint pBitmap = new Paint(Paint.FILTER_BITMAP_FLAG);
+        private final Paint pHomeLine = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint pAlert = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint pAlertMark = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint pCarBand = new Paint();
+        private final Paint pCarTime = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint pCarBorder = new Paint(Paint.ANTI_ALIAS_FLAG);
 
         // Bouton ✕ de la bulle (fractions de l'écran) : au-dessus de l'éclair de
         // charge et des points d'indication que le système dessine en bas
@@ -356,6 +384,15 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         private static final float BADGE_ZONE_TOP = 0.36f;
         private static final float BADGE_ZONE_BOTTOM = 0.56f;
 
+        // Vignette de la dernière voiture, à gauche de l'heure (x relatif au
+        // centre, en fractions de l'écran) : symétrique de la pastille
+        private static final float CAR_L = -0.42f;
+        private static final float CAR_R = -0.223f;
+        private static final float CAR_T = 0.375f;
+        private static final float CAR_B = 0.53f;
+        /** Durée d'affichage de la photo agrandie, sauf appui plus tôt */
+        private static final long CAR_VIEW_MS = 30_000L;
+
         DefiRenderer(@NonNull SurfaceHolder holder,
                 @NonNull WatchState watchState,
                 @NonNull CurrentUserStyleRepository styleRepo,
@@ -367,11 +404,15 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             initPaints();
             // Afficher la pastille dès réception, sans attendre la minute suivante
             NotificationHolder.setOnChangeListener(this::postInvalidate);
+            // Données Home Assistant : dernier état gardé par la DataLayer, puis chaque envoi
+            HomeData.setOnChangeListener(this::postInvalidate);
+            HomeData.load(DefiWatchFaceService.this);
         }
 
         @Override
         public void onDestroy() {
             NotificationHolder.setOnChangeListener(null);
+            HomeData.setOnChangeListener(null);
             super.onDestroy();
         }
 
@@ -397,8 +438,9 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
 
             boolean ambient = getRenderParameters().getDrawMode() == DrawMode.AMBIENT;
             boolean notif = !ambient && NotificationHolder.isActive();
+            boolean carView = !ambient && !notif && isCarViewOpen();
 
-            long refresh = notif ? REFRESH_NOTIF_MS : REFRESH_NORMAL_MS;
+            long refresh = notif || carView ? REFRESH_NOTIF_MS : REFRESH_NORMAL_MS;
             if (getInteractiveDrawModeUpdateDelayMillis() != refresh)
                 setInteractiveDrawModeUpdateDelayMillis(refresh);
 
@@ -410,6 +452,9 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             } else if (notif) {
                 c.drawColor(COL_BG);
                 drawNotificationMode(c, zdt);
+            } else if (carView) {
+                c.drawColor(COL_BG);
+                drawCarView(c, zdt);
             } else {
                 // Lire les données des complications
                 int steps = readInt(COMPL_STEPS);
@@ -421,7 +466,10 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
                 drawStepsCal(c, steps, cals);
                 drawHealth(c, hr);
                 drawTime(c, zdt);
-                drawInfoLine(c, zdt);
+                drawCarThumb(c);
+                HomeData.Weather home = HomeData.getWeather();
+                drawInfoLine(c, home);
+                drawHomeLine(c, home);
                 drawDate(c, zdt);
                 drawBattery(c, battPct);
                 int pending = NotificationHolder.getPendingCount();
@@ -616,12 +664,16 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             c.drawText(hhmm, CX, y(0.505f), pTime);
         }
 
-        // --- UNE LIGNE EN 3 ZONES : [icône]temp° | UV x · hum% | 🌙 Sem ---
-        private void drawInfoLine(Canvas c, ZonedDateTime z) {
+        // --- UNE LIGNE EN 3 ZONES : [icône] | temp° UV x hum% | 🌙 ou ⚠ vigilance ---
+        // Température et humidité : station de la maison (Home Assistant) si
+        // elle a répondu dans l'heure, sinon OHealth ; UV et icône : OHealth
+        private void drawInfoLine(Canvas c, HomeData.Weather home) {
             float lineY = y(0.63f);
-            String tempTxt = readText(COMPL_TEMP);
+            String tempTxt = home != null && !Double.isNaN(home.temp)
+                    ? fmt("%.1f°", home.temp) : readText(COMPL_TEMP);
             String uvTxt = readText(COMPL_UV);
-            String humTxt = readText(COMPL_HUMID);
+            String humTxt = home != null && !Double.isNaN(home.humidity)
+                    ? fmt("%d%%", Math.round(home.humidity)) : readText(COMPL_HUMID);
 
             float iconSizePx = W * 0.15f;
             Bitmap weatherIcn = weatherIcon((int) iconSizePx);
@@ -644,16 +696,184 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
                 center += "  " + humTxt;
             c.drawText(center, CX - W * 0.00f, lineY, pInfo);
 
-            // Zone droite : 🌙 S11
-            pInfo.setTextAlign(Paint.Align.RIGHT);
+            // Zone droite : phase de la lune, ou triangle de vigilance à sa place
             float rightX = CX + W * 0.4f;
-            float oldSize = pInfo.getTextSize();
-            pInfo.setTextSize(oldSize * 1.25f);
-            c.drawText(moonPhase(), rightX, lineY, pInfo);
-            pInfo.setTextSize(oldSize);
+            int alertCol = home != null ? alertColor(home.alertLevel) : 0;
+            if (alertCol != 0) {
+                drawAlertIcon(c, rightX, lineY - pInfo.getTextSize() * 0.35f, alertCol);
+            } else {
+                pInfo.setTextAlign(Paint.Align.RIGHT);
+                float oldSize = pInfo.getTextSize();
+                pInfo.setTextSize(oldSize * 1.25f);
+                c.drawText(moonPhase(), rightX, lineY, pInfo);
+                pInfo.setTextSize(oldSize);
+            }
 
             // Reset align
             pInfo.setTextAlign(Paint.Align.CENTER);
+        }
+
+        /** Couleur du niveau de vigilance, 0 sans vigilance */
+        private int alertColor(String level) {
+            switch (level) {
+                case "Jaune":
+                    return COL_ALERT_YELLOW;
+                case "Orange":
+                    return COL_ALERT_ORANGE;
+                case "Rouge":
+                    return COL_ALERT_RED;
+                default:
+                    return 0;
+            }
+        }
+
+        /** Triangle « ! » de la couleur du niveau, bord droit sur right, centré sur cy */
+        private void drawAlertIcon(Canvas c, float right, float cy, int color) {
+            float s = W * 0.09f;
+            float cx = right - s * 0.55f;
+            alertPath.reset();
+            alertPath.moveTo(cx, cy - s * 0.5f);
+            alertPath.lineTo(cx + s * 0.55f, cy + s * 0.45f);
+            alertPath.lineTo(cx - s * 0.55f, cy + s * 0.45f);
+            alertPath.close();
+            pAlert.setColor(color);
+            c.drawPath(alertPath, pAlert);
+            pAlertMark.setTextSize(s * 0.62f);
+            c.drawText("!", cx, cy + s * 0.36f, pAlertMark);
+        }
+
+        // --- LIGNE MAISON : ressenti · vent · pluie, ou la vigilance en cours ---
+        private void drawHomeLine(Canvas c, HomeData.Weather home) {
+            if (home == null)
+                return;
+            String txt;
+            int alertCol = alertColor(home.alertLevel);
+            if (alertCol != 0) {
+                txt = home.alertPhenomena.isEmpty()
+                        ? "Vigilance " + home.alertLevel.toLowerCase(Locale.FRENCH)
+                        : home.alertLevel + " : " + home.alertPhenomena;
+                pHomeLine.setColor(alertCol);
+            } else {
+                StringBuilder sb = new StringBuilder();
+                if (!Double.isNaN(home.feels))
+                    sb.append(fmt("ressenti %d°", Math.round(home.feels)));
+                if (!Double.isNaN(home.wind))
+                    sb.append(sb.length() > 0 ? " · " : "").append(fmt("vent %d km/h", Math.round(home.wind)));
+                String rain = home.rainIn == 0 ? "pluie en cours"
+                        : home.rainIn > 0 ? fmt("pluie dans %d min", home.rainIn)
+                        : !Double.isNaN(home.rain) ? fmt("pluie %d %%", Math.round(home.rain)) : "";
+                if (!rain.isEmpty())
+                    sb.append(sb.length() > 0 ? " · " : "").append(rain);
+                txt = sb.toString();
+                pHomeLine.setColor(COL_VIOLET);
+                pHomeLine.setAlpha(190);
+            }
+            if (txt.isEmpty())
+                return;
+            // Réduire la taille plutôt que déborder du cercle
+            float size = W * 0.043f;
+            pHomeLine.setTextSize(size);
+            float maxW = W * 0.78f, w = pHomeLine.measureText(txt);
+            if (w > maxW)
+                pHomeLine.setTextSize(size * maxW / w);
+            c.drawText(txt, CX, y(0.685f), pHomeLine);
+        }
+
+        // --- VIGNETTE : dernière voiture du chemin (moins de 24 h) ---
+        private void drawCarThumb(Canvas c) {
+            Bitmap pic = HomeData.getCarPicture();
+            if (pic == null)
+                return;
+            carRect.set(CX + W * CAR_L, y(CAR_T), CX + W * CAR_R, y(CAR_B));
+            float radius = W * 0.018f;
+            Bitmap thumb = carThumb(pic, Math.round(carRect.width()), Math.round(carRect.height()));
+            c.save();
+            carClip.reset();
+            carClip.addRoundRect(carRect, radius, radius, android.graphics.Path.Direction.CW);
+            c.clipPath(carClip);
+            c.drawBitmap(thumb, carRect.left, carRect.top, pBitmap);
+            // Heure du passage sur un bandeau sombre en bas de la photo
+            float band = W * 0.045f;
+            c.drawRect(carRect.left, carRect.bottom - band, carRect.right, carRect.bottom, pCarBand);
+            pCarTime.setTextSize(band * 0.8f);
+            c.drawText(hhmm(HomeData.getCarPassedAt()), carRect.centerX(),
+                    carRect.bottom - band * 0.22f, pCarTime);
+            c.restore();
+            // Cadre orange tant que le véhicule est sur le chemin
+            pCarBorder.setColor(HomeData.isCarPresent() ? COL_ALERT_ORANGE : COL_BLUE);
+            c.drawRoundRect(carRect, radius, radius, pCarBorder);
+        }
+
+        /** Photo recadrée au centre aux dimensions de la vignette, une fois par photo */
+        private Bitmap carThumb(Bitmap src, int w, int h) {
+            if (src != carThumbSrc || carThumb == null || carThumb.getWidth() != w
+                    || carThumb.getHeight() != h) {
+                float k = Math.max(w / (float) src.getWidth(), h / (float) src.getHeight());
+                int sw = Math.min(src.getWidth(), Math.round(w / k));
+                int sh = Math.min(src.getHeight(), Math.round(h / k));
+                Bitmap crop = Bitmap.createBitmap(src, (src.getWidth() - sw) / 2,
+                        (src.getHeight() - sh) / 2, sw, sh);
+                carThumb = Bitmap.createScaledBitmap(crop, w, h, true);
+                carThumbSrc = src;
+            }
+            return carThumb;
+        }
+
+        boolean isOnCarThumb(int x, int y) {
+            if (HomeData.getCarPicture() == null)
+                return false;
+            // Zone élargie pour un doigt, jusqu'au bord de l'heure
+            return x >= CX + W * (CAR_L - 0.05f) && x <= CX + W * (CAR_R + 0.02f)
+                    && y >= y(BADGE_ZONE_TOP) && y <= y(BADGE_ZONE_BOTTOM);
+        }
+
+        boolean isCarViewOpen() {
+            return carViewOpenedAt > 0
+                    && System.currentTimeMillis() - carViewOpenedAt < CAR_VIEW_MS;
+        }
+
+        void openCarView() {
+            carViewOpenedAt = System.currentTimeMillis();
+        }
+
+        void closeCarView() {
+            carViewOpenedAt = 0;
+            carViewSrc = null;
+            carViewScaled = null;
+        }
+
+        // --- PHOTO AGRANDIE DE LA VOITURE (appui sur la vignette) ---
+        private void drawCarView(Canvas c, ZonedDateTime z) {
+            c.drawText(fmt("%02d:%02d", z.getHour(), z.getMinute()), CX, y(0.12f), pNotifTime);
+            // « Véhicule — sens — HH:MM » de Home Assistant, sinon l'heure de la photo
+            String label = HomeData.getCarLabel();
+            c.drawText(label.isEmpty() ? "Chemin · " + hhmm(HomeData.getCarPassedAt())
+                    : label.replace(" — ", " · "), CX, y(0.2f), pNotifApp);
+
+            Bitmap pic = HomeData.getCarPicture();
+            if (pic != null) {
+                if (pic != carViewSrc) {
+                    float k = Math.min(W * 0.8f / pic.getWidth(), W * 0.5f / pic.getHeight());
+                    carViewScaled = Bitmap.createScaledBitmap(pic, Math.round(pic.getWidth() * k),
+                            Math.round(pic.getHeight() * k), true);
+                    carViewSrc = pic;
+                }
+                c.drawBitmap(carViewScaled, CX - carViewScaled.getWidth() / 2f,
+                        y(0.48f) - carViewScaled.getHeight() / 2f, pBitmap);
+            }
+            if (HomeData.isCarPresent()) {
+                pHomeLine.setColor(COL_ALERT_ORANGE);
+                pHomeLine.setTextSize(W * 0.05f);
+                c.drawText("Véhicule présent", CX, y(0.78f), pHomeLine);
+            }
+            long elapsed = System.currentTimeMillis() - carViewOpenedAt;
+            drawCloseButton(c, Math.max(0f, 1f - elapsed / (float) CAR_VIEW_MS));
+        }
+
+        private String hhmm(long epochMs) {
+            java.time.LocalTime t = java.time.Instant.ofEpochMilli(epochMs)
+                    .atZone(java.time.ZoneId.systemDefault()).toLocalTime();
+            return fmt("%02d:%02d", t.getHour(), t.getMinute());
         }
 
         // --- DATE ---
@@ -746,13 +966,17 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
                 c.restore();
             }
 
-            // Bouton ✕, cerclé du temps d'affichage restant
+            drawCloseButton(c, NotificationHolder.getRemaining());
+        }
+
+        /** Bouton ✕, cerclé de la part du temps d'affichage restante (1 → 0) */
+        private void drawCloseButton(Canvas c, float remaining) {
             float r = W * CLOSE_RADIUS;
             float cy = y(CLOSE_Y);
             c.drawCircle(CX, cy, r, pCloseBg);
             float rr = r + 5;
             closeRing.set(CX - rr, cy - rr, CX + rr, cy + rr);
-            c.drawArc(closeRing, -90, 360 * NotificationHolder.getRemaining(), false, pCloseRing);
+            c.drawArc(closeRing, -90, 360 * remaining, false, pCloseRing);
             float k = r * 0.4f;
             c.drawLine(CX - k, cy - k, CX + k, cy + k, pCloseX);
             c.drawLine(CX - k, cy + k, CX + k, cy - k, pCloseX);
@@ -837,6 +1061,13 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             setupStroke(pCloseRing, COL_VIOLET, 4);
             pBadgeDot.setColor(COL_VIOLET);
             setupText(pBadgeCount, COL_BG, 18, bold);
+            // Home Assistant : ligne maison, vigilance, vignette de la voiture
+            setupText(pHomeLine, COL_VIOLET, 20, bold);
+            pAlert.setStyle(Paint.Style.FILL);
+            setupText(pAlertMark, COL_BG, 24, bold);
+            pCarBand.setColor(0x99000000);
+            setupText(pCarTime, COL_WHITE, 16, bold);
+            setupStroke(pCarBorder, COL_BLUE, 2);
         }
 
         private void setupStroke(Paint p, int c, float w) {
