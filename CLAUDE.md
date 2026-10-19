@@ -47,6 +47,10 @@ et les envoie à la montre via la **Wearable DataLayer API** (`play-services-wea
   = mise à jour qui remplace). **Pastille** à droite de l'heure (icône de la plus récente, nombre en
   attente) ; un appui sur la pastille ou l'heure ouvre la plus récente (bulle 60 s). Le bouton du
   bas est un **›** tant qu'il en reste (« +N » à droite) et passe à la suivante, puis un ✕
+- **Doublons montre / téléphone** : une appli installée des deux côtés (WhatsApp, gardé sur la montre
+  pour répondre) envoie le même message deux fois. Même appli + titre + texte = une seule entrée,
+  qui garde l'action de la copie locale (appui = WhatsApp de la montre) ; un doublon arrivé jusqu'à
+  2 min après la lecture de son jumeau est absorbé. Effacer une copie retire l'entrée
 - Notification lue ou effacée (téléphone, ou notif locale de la montre) : retirée de la file
   **sans allumer l'écran**, et sa bulle se ferme si elle était affichée. Clés préfixées
   `phone:` / `local:`
@@ -75,6 +79,13 @@ et les envoie à la montre via la **Wearable DataLayer API** (`play-services-wea
   capability n'est pas retirée aussitôt. Rétablir l'accès :
   `adb shell cmd notification allow_listener com.defi.watchface.distance/com.defi.watchface.mobile.PhoneNotificationListenerService`
 
+### Google Fit coupé sur la montre (2026-10-19)
+Les services Google (`FitRecordingBroker`) tenaient le capteur de pas en continu, en doublon
+d'OHealth (aucune appli Fit sur le téléphone). Reconnaissance d'activité retirée au niveau de l'UID,
+effective au prochain redémarrage des services Google :
+`adb shell appops set --uid com.google.android.gms ACTIVITY_RECOGNITION ignore` (rétablir : `allow`).
+Vérifier ensuite que `dumpsys sensorservice` ne montre plus `LocalSensorAdapter` sur `Step_Sensor`.
+
 ### Données Home Assistant (téléphone → montre)
 L'appli `mobile` garde un WebSocket ouvert vers Home Assistant (`HaLink`, jeton longue durée,
 `subscribe_entities`) et relaie l'état à la montre par la DataLayer ; la montre ne parle jamais à HA
@@ -89,6 +100,12 @@ que le système garde en vie, porte le lien ; reconnexion seule (coupure, résea
   présence `binary_sensor.chemin_car_occupancy` (cadre orange). Vignette affichée 24 h, appui = photo
   en grand 30 s. Heure du passage : `lc` de l'entité, pas `lu` (le jeton de `entity_picture`, renouvelé
   toutes les 5 min, fait avancer `lu`).
+- `/ha/agenda` : événements **du jour** de 6 agendas (`CALENDARS` dans `HaLink` : Nautile,
+  Francois r, Famille, Gmail perso, Anniversaires, Jours fériés) par `calendar.get_events`
+  (`return_response`) : l'état d'une entité `calendar.*` n'expose qu'un événement. Redemandé au
+  changement d'un agenda, de jour, et toutes les 15 min ; envoyé seulement s'il change. Le cadran
+  affiche, à la place de l'ancienne ligne FC, le rendez-vous en cours ou le prochain
+  (« 16:30 Kiné »), sinon l'événement « journée entière » du jour ; la FC est montée tout en haut
 - Mêmes règles que les tuiles HA Wear OS (`sensor.montre_meteo`, `sensor.montre_bus_chemin` dans
   `template.yaml` de HA) : couleurs de vigilance `#ffd600`/`#ff9100`/`#ff1744`, ordre des phénomènes.
 - La DataLayer garde le dernier élément de chaque chemin : `HomeData.load()` le relit au démarrage du cadran.

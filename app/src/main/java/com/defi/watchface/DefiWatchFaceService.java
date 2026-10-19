@@ -16,6 +16,7 @@ import android.os.BatteryManager;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import android.text.TextUtils;
 import android.util.Log;
 import android.view.SurfaceHolder;
 
@@ -375,6 +376,8 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         private final Paint pBadgeCount = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint pBitmap = new Paint(Paint.FILTER_BITMAP_FLAG);
         private final Paint pHomeLine = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final TextPaint pAgendaTime = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        private final TextPaint pAgenda = new TextPaint(Paint.ANTI_ALIAS_FLAG);
         private final Paint pAlert = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint pAlertMark = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint pCarBand = new Paint();
@@ -479,6 +482,7 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
                 drawArcs(c, steps, cals);
                 drawStepsCal(c, steps, cals);
                 drawHealth(c, hr);
+                drawAgenda(c);
                 drawTime(c, zdt);
                 drawCarThumb(c);
                 HomeData.Weather home = HomeData.getWeather();
@@ -626,7 +630,7 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         // --- PAS | CAL ---
         private void drawStepsCal(Canvas c, int steps, int cals) {
             float lx = CX - W * 0.14f, rx = CX + W * 0.14f;
-            float yLab = y(0.135f), yVal = y(0.200f), yGoal = y(0.245f);
+            float yLab = y(0.175f), yVal = y(0.238f), yGoal = y(0.28f);
 
             pLabel.setColor(COL_STEPS);
             c.drawText("PAS", lx, yLab, pLabel);
@@ -649,14 +653,14 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             c.drawText("/" + CAL_GOAL, rx, yGoal, pGoal);
         }
 
-        // --- FC ---
+        // --- FC, tout en haut au centre ---
         private void drawHealth(Canvas c, int hr) {
-            float baseY = y(0.33f);
+            float baseY = y(0.125f);
             String num = hr > 0 ? String.valueOf(hr) : "--";
             String left = "\u2665 ";
             String right = " bpm";
             float oldSize = pHealth.getTextSize();
-            float bigSize = 34;
+            float bigSize = 28;
             float numW = bigSize / oldSize * pHealth.measureText(num);
             float leftW = pHealth.measureText(left);
             float rightW = pHealth.measureText(right);
@@ -669,6 +673,27 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             pHealth.setTextSize(oldSize);
             c.drawText(right, startX + leftW + numW, baseY, pHealth);
             pHealth.setTextAlign(Paint.Align.CENTER);
+        }
+
+        // --- AGENDA : rendez-vous du jour (agendas Home Assistant) ---
+        private void drawAgenda(Canvas c) {
+            HomeData.Event e = HomeData.getAgendaEvent();
+            if (e == null)
+                return;
+            String time = "";
+            if (!e.allDay) {
+                ZonedDateTime start = java.time.Instant.ofEpochMilli(e.start)
+                        .atZone(java.time.ZoneId.systemDefault());
+                time = fmt("%02d:%02d ", start.getHour(), start.getMinute());
+            }
+            float timeW = pAgendaTime.measureText(time);
+            float maxTitleW = W * 0.74f - timeW;
+            String title = TextUtils.ellipsize(e.title, pAgenda, maxTitleW,
+                    TextUtils.TruncateAt.END).toString();
+            float startX = CX - (timeW + pAgenda.measureText(title)) / 2f;
+            float baseY = y(0.345f);
+            c.drawText(time, startX, baseY, pAgendaTime);
+            c.drawText(title, startX + timeW, baseY, pAgenda);
         }
 
         // --- HEURE ---
@@ -1060,7 +1085,11 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             setupText(pLabel, COL_STEPS, 16, bold);
             setupText(pValue, COL_STEPS, 36, bold);
             setupText(pGoal, COL_STEPS, 24, normal);
-            setupText(pHealth, COL_HEALTH, 26, bold);
+            setupText(pHealth, COL_HEALTH, 22, bold);
+            setupText(pAgendaTime, COL_WHITE, 26, bold);
+            pAgendaTime.setTextAlign(Paint.Align.LEFT);
+            setupText(pAgenda, COL_GREY, 26, bold);
+            pAgenda.setTextAlign(Paint.Align.LEFT);
             setupText(pTime, COL_WHITE, 80, bold);
             setupText(pInfo, COL_VIOLET, 32, bold);
             setupText(pDate, COL_WHITE, 32, bold);

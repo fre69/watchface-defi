@@ -14,6 +14,10 @@ import com.google.android.gms.wearable.DataMapItem;
 import com.google.android.gms.wearable.Wearable;
 
 import java.io.InputStream;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Données Home Assistant relayées par l'appli du téléphone (HaLink) :
@@ -25,6 +29,7 @@ public final class HomeData {
     private static final String TAG = "DefiHome";
     static final String WEATHER_PATH = "/ha/weather";
     static final String CAR_PATH = "/ha/car";
+    static final String AGENDA_PATH = "/ha/agenda";
 
     /** Le téléphone renvoie la météo toutes les 30 min au moins : au-delà d'1 h, retour à OHealth */
     private static final long WEATHER_MAX_AGE_MS = 60 * 60_000L;
@@ -46,7 +51,23 @@ public final class HomeData {
         long sentAt;
     }
 
+    /** Événement du jour, tiré des agendas Home Assistant */
+    public static final class Event {
+        public final String title;
+        public final long start;
+        public final long end;
+        public final boolean allDay;
+
+        Event(String title, long start, long end, boolean allDay) {
+            this.title = title;
+            this.start = start;
+            this.end = end;
+            this.allDay = allDay;
+        }
+    }
+
     private static Weather weather = null;
+    private static List<Event> agenda = new ArrayList<>();
     private static Bitmap carPicture = null;
     private static long carPassedAt = 0;
     private static String carLabel = "";
@@ -62,6 +83,29 @@ public final class HomeData {
         if (weather == null || System.currentTimeMillis() - weather.sentAt > WEATHER_MAX_AGE_MS)
             return null;
         return weather;
+    }
+
+    /**
+     * Rendez-vous à afficher : celui en cours ou le prochain du jour, sinon
+     * l'événement « journée entière » du jour ; null : rien aujourd'hui.
+     * Les événements d'un autre jour sont ignorés (téléphone muet depuis minuit)
+     */
+    public static synchronized Event getAgendaEvent() {
+        long now = System.currentTimeMillis();
+        long endOfDay = LocalDate.now().plusDays(1).atStartOfDay(ZoneId.systemDefault())
+                .toInstant().toEpochMilli();
+        Event timed = null, allDay = null;
+        for (Event e : agenda) {
+            if (e.end <= now || e.start >= endOfDay)
+                continue;
+            if (e.allDay) {
+                if (allDay == null)
+                    allDay = e;
+            } else if (timed == null || e.start < timed.start) {
+                timed = e;
+            }
+        }
+        return timed != null ? timed : allDay;
     }
 
     /** Photo de la dernière voiture si elle date de moins de 24 h, sinon null */
@@ -125,6 +169,21 @@ public final class HomeData {
                 if (weather != null && weather.sentAt > w.sentAt)
                     return true;
                 weather = w;
+            }
+            notifyChange();
+            return true;
+        }
+        if (AGENDA_PATH.equals(path)) {
+            DataMap m = DataMapItem.fromDataItem(item).getDataMap();
+            List<Event> events = new ArrayList<>();
+            ArrayList<DataMap> list = m.getDataMapArrayList("events");
+            if (list != null) {
+                for (DataMap e : list)
+                    events.add(new Event(e.getString("title", ""), e.getLong("start"),
+                            e.getLong("end"), e.getBoolean("allDay")));
+            }
+            synchronized (HomeData.class) {
+                agenda = events;
             }
             notifyChange();
             return true;

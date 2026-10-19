@@ -23,6 +23,11 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -65,8 +70,13 @@ public final class HaLink {
     /** « Véhicule — sens — HH:MM », écrit par l'automatisation frigate_chemin_event */
     private static final String E_CAR_LABEL = "input_text.derniere_voiture";
     private static final String E_CAR_PRESENT = "binary_sensor.chemin_car_occupancy";
+    /** Agendas affichés sur le cadran (rendez-vous du jour) */
+    private static final String[] CALENDARS = { "calendar.nautile", "calendar.francois_r",
+            "calendar.famille", "calendar.frevillet26_gmail_com", "calendar.anniversaires",
+            "calendar.jours_feries_en_france" };
     private static final String[] ENTITIES = { E_TEMP, E_HUMID, E_WEATHER, E_RAIN, E_NEXT_RAIN,
-            E_ALERT, E_CAR, E_CAR_LABEL, E_CAR_PRESENT };
+            E_ALERT, E_CAR, E_CAR_LABEL, E_CAR_PRESENT, CALENDARS[0], CALENDARS[1], CALENDARS[2],
+            CALENDARS[3], CALENDARS[4], CALENDARS[5] };
 
     /** Phénomènes de vigilance Météo-France, dans l'ordre du template montre_meteo */
     private static final String[] PHENOMENA = { "Pluie-inondation", "Inondation", "Orages",
@@ -75,6 +85,10 @@ public final class HaLink {
 
     private static final String WEATHER_PATH = "/ha/weather";
     private static final String CAR_PATH = "/ha/car";
+    private static final String AGENDA_PATH = "/ha/agenda";
+    /** Événements du jour redemandés au plus tard toutes les 15 min (et à chaque changement d'agenda) */
+    private static final long AGENDA_REFRESH_MS = 15 * 60_000L;
+    private static final DateTimeFormatter ISO = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssXXX");
 
     // La température bouge sans cesse : un envoi toutes les 5 min au plus.
     // Un envoi toutes les 30 min au moins, même sans changement : la montre
@@ -118,6 +132,12 @@ public final class HaLink {
     private String lastCarPicture;
     private Asset carAsset;
     private long carPassedAt;
+    /** Identifiant du prochain message WebSocket (1 : abonnement) */
+    private int nextId = 2;
+    private int agendaRequestId = -1;
+    private long lastAgendaFetch;
+    private LocalDate lastAgendaDay;
+    private String lastAgendaSig;
 
     private volatile String status = "Non configuré";
     private Runnable statusListener;
@@ -196,6 +216,7 @@ public final class HaLink {
         @Override
         public void run() {
             publishWeather();
+            maybeFetchAgenda();
             handler.postDelayed(this, WEATHER_HEARTBEAT_MS);
         }
     };
@@ -292,20 +313,31 @@ public final class HaLink {
                             .put("type", "subscribe_entities")
                             .put("entity_ids", new JSONArray(ENTITIES)).toString());
                     setStatus("Connecté");
+                    fetchAgenda();
                     break;
                 case "auth_invalid":
                     // Inutile d'insister avec un jeton refusé : attendre une nouvelle configuration
                     closeSocket();
                     setStatus("Jeton refusé par Home Assistant");
                     break;
-                case "event":
-                    applyEvent(msg.getJSONObject("event"));
+                case "event": {
+                    JSONObject ev = msg.getJSONObject("event");
+                    applyEvent(ev);
                     publishWeather();
                     publishCar();
+                    // Agenda modifié (événement ajouté, commencé, fini) : aussitôt
+                    if (touchesCalendar(ev))
+                        fetchAgenda();
+                    else
+                        maybeFetchAgenda();
                     break;
+                }
                 case "result":
-                    if (!msg.optBoolean("success", true))
+                    if (msg.optInt("id") == agendaRequestId) {
+                        onAgenda(msg);
+                    } else if (!msg.optBoolean("success", true)) {
                         Log.w(TAG, "Abonnement refusé : " + msg.optJSONObject("error"));
+                    }
                     break;
                 default:
                     break;
@@ -484,6 +516,113 @@ public final class HaLink {
             lastWeatherSig = sig;
             lastAlertSig = alertSig;
             lastWeatherSentAt = now;
+        }
+    }
+
+    // =========================================================================
+    // Agenda : événements du jour (calendar.get_events, plus complet que l'état
+    // des entités, qui n'expose qu'un événement par agenda)
+    // =========================================================================
+
+    private static boolean touchesCalendar(JSONObject ev) {
+        for (String part : new String[] { "a", "c" }) {
+            JSONObject o = ev.optJSONObject(part);
+            if (o == null)
+                continue;
+            for (Iterator<String> it = o.keys(); it.hasNext();)
+                if (it.next().startsWith("calendar."))
+                    return true;
+        }
+        return false;
+    }
+
+    /** Redemande au changement de jour, et toutes les 15 min au plus tard */
+    private void maybeFetchAgenda() {
+        if (!LocalDate.now().equals(lastAgendaDay)
+                || System.currentTimeMillis() - lastAgendaFetch > AGENDA_REFRESH_MS)
+            fetchAgenda();
+    }
+
+    private void fetchAgenda() {
+        if (!authenticated || socket == null)
+            return;
+        ZonedDateTime start = LocalDate.now().atStartOfDay(ZoneId.systemDefault());
+        try {
+            agendaRequestId = nextId++;
+            lastAgendaFetch = System.currentTimeMillis();
+            lastAgendaDay = start.toLocalDate();
+            socket.send(new JSONObject()
+                    .put("id", agendaRequestId)
+                    .put("type", "call_service")
+                    .put("domain", "calendar")
+                    .put("service", "get_events")
+                    .put("target", new JSONObject().put("entity_id", new JSONArray(CALENDARS)))
+                    .put("service_data", new JSONObject()
+                            .put("start_date_time", start.format(ISO))
+                            .put("end_date_time", start.plusDays(1).format(ISO)))
+                    .put("return_response", true).toString());
+        } catch (JSONException e) {
+            Log.w(TAG, "Demande d'agenda impossible", e);
+        }
+    }
+
+    /** Réponse de get_events : { "calendar.x": { "events": [ {summary, start, end} ] } } */
+    private void onAgenda(JSONObject msg) {
+        JSONObject result = msg.optJSONObject("result");
+        JSONObject response = result != null ? result.optJSONObject("response") : null;
+        if (!msg.optBoolean("success", false) || response == null) {
+            Log.w(TAG, "Agenda refusé : " + msg.optJSONObject("error"));
+            return;
+        }
+        List<DataMap> events = new ArrayList<>();
+        List<String> seen = new ArrayList<>();
+        for (Iterator<String> it = response.keys(); it.hasNext();) {
+            JSONObject cal = response.optJSONObject(it.next());
+            JSONArray list = cal != null ? cal.optJSONArray("events") : null;
+            if (list == null)
+                continue;
+            for (int i = 0; i < list.length(); i++) {
+                JSONObject e = list.optJSONObject(i);
+                if (e == null)
+                    continue;
+                String title = e.optString("summary", "").trim();
+                String start = e.optString("start", ""), end = e.optString("end", "");
+                long s = parseTime(start), en = parseTime(end);
+                // Même événement dans deux agendas (famille et perso) : une fois
+                String sig = title + "|" + s;
+                if (title.isEmpty() || s < 0 || en < 0 || seen.contains(sig))
+                    continue;
+                seen.add(sig);
+                DataMap m = new DataMap();
+                m.putString("title", title);
+                m.putLong("start", s);
+                m.putLong("end", en);
+                // « 2026-10-25 » : journée entière ; sinon date et heure
+                m.putBoolean("allDay", start.length() == 10);
+                events.add(m);
+            }
+        }
+        events.sort((a, b) -> Long.compare(a.getLong("start"), b.getLong("start")));
+        String sig = lastAgendaDay + "|" + String.join(";", seen);
+        if (sig.equals(lastAgendaSig))
+            return;
+        PutDataMapRequest req = PutDataMapRequest.create(AGENDA_PATH);
+        req.getDataMap().putDataMapArrayList("events", new ArrayList<>(events));
+        req.getDataMap().putLong("sentAt", System.currentTimeMillis());
+        if (send(req)) {
+            lastAgendaSig = sig;
+            Log.d(TAG, "Agenda envoyé à la montre : " + events.size() + " événement(s)");
+        }
+    }
+
+    /** Date seule (journée entière, minuit local) ou date et heure ISO ; -1 si illisible */
+    private static long parseTime(String s) {
+        try {
+            if (s.length() == 10)
+                return LocalDate.parse(s).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli();
+            return OffsetDateTime.parse(s).toInstant().toEpochMilli();
+        } catch (Exception e) {
+            return -1;
         }
     }
 
