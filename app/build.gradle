@@ -41,4 +41,7 @@ dependencies {
 
     // Wearable DataLayer API (réception notifs du téléphone)
     implementation 'com.google.android.gms:play-services-wearable:18.1.0'
+
+    // Saisie du système (dictée, clavier) pour une réponse libre depuis la bulle
+    implementation 'androidx.wear:wear-input:1.1.0'
 }

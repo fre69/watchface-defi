@@ -1,7 +1,10 @@
 package com.defi.watchface.mobile;
 
 import android.app.Notification;
+import android.app.PendingIntent;
 import android.app.Person;
+import android.app.RemoteInput;
+import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
@@ -28,6 +31,7 @@ import com.google.android.gms.wearable.Wearable;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -44,6 +48,8 @@ public class PhoneNotificationListenerService extends NotificationListenerServic
 
     /** Écoute branchée par le système : condition du battement de cœur vers la montre */
     private static volatile boolean connected = false;
+    /** Écoute branchée, pour retrouver une notification au moment d'y répondre */
+    private static volatile PhoneNotificationListenerService instance = null;
 
     static boolean isConnected() {
         return connected;
@@ -53,6 +59,7 @@ public class PhoneNotificationListenerService extends NotificationListenerServic
     public void onListenerConnected() {
         Log.d(TAG, "Phone notification listener connected");
         connected = true;
+        instance = this;
         // Battement aussitôt (la montre retire le témoin de lien coupé), puis toutes les 15 min
         HeartbeatReceiver.send(this);
         HeartbeatReceiver.schedule(this);
@@ -65,6 +72,7 @@ public class PhoneNotificationListenerService extends NotificationListenerServic
     public void onListenerDisconnected() {
         Log.w(TAG, "Phone notification listener disconnected");
         connected = false;
+        instance = null;
     }
 
     @Override
@@ -78,6 +86,9 @@ public class PhoneNotificationListenerService extends NotificationListenerServic
                 | Notification.FLAG_NO_CLEAR | Notification.FLAG_GROUP_SUMMARY)) != 0) return;
 
         Bundle extras = notif.extras;
+        // Mise à jour après sa propre réponse : pas de nouvelle notification
+        if (lastMessageFromSelf(extras))
+            return;
 
         // App name
         String appName = "";
@@ -120,6 +131,9 @@ public class PhoneNotificationListenerService extends NotificationListenerServic
                     iconBmp = Bitmap.createBitmap(48, 48, Bitmap.Config.ARGB_8888);
                     Canvas c = new Canvas(iconBmp);
                     d.setBounds(0, 0, 48, 48);
+                    // Petite icône = silhouette (seul l'alpha compte, Android la
+                    // teinte) : sans teinte, celle de Messages sort noire sur noir
+                    d.setTint(0xFFFFFFFF);
                     d.draw(c);
                 }
             } catch (Exception e) {
@@ -130,7 +144,8 @@ public class PhoneNotificationListenerService extends NotificationListenerServic
         Log.d(TAG, "Sending to watch: " + appName + " / " + title + " / " + text
                 + " picture=" + (picture != null));
 
-        sendToWatch(sbn.getKey(), appName, title, text, iconBmp, picture);
+        sendToWatch(sbn.getKey(), appName, title, text, iconBmp, picture,
+                replyAction(notif) != null);
     }
 
     @Override
@@ -147,18 +162,75 @@ public class PhoneNotificationListenerService extends NotificationListenerServic
                 Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
     }
 
+    /** Clé de la notification à partir de son chemin (envoyé par la montre pour répondre) */
+    static String keyFromPathId(String id) {
+        return new String(Base64.decode(id, Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING),
+                StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Action « Répondre » à saisie libre : celle destinée aux montres en
+     * priorité (WearableExtender), sinon celle de la notification ; null : aucune
+     */
+    static Notification.Action replyAction(Notification n) {
+        List<Notification.Action> candidates =
+                new ArrayList<>(new Notification.WearableExtender(n).getActions());
+        if (n.actions != null)
+            candidates.addAll(Arrays.asList(n.actions));
+        for (Notification.Action a : candidates) {
+            RemoteInput[] inputs = a.getRemoteInputs();
+            if (inputs == null || a.actionIntent == null)
+                continue;
+            for (RemoteInput r : inputs)
+                if (r.getAllowFreeFormInput())
+                    return a;
+        }
+        return null;
+    }
+
+    /**
+     * Répond à une notification comme Android Auto ou une montre : texte placé
+     * dans le RemoteInput de son action « Répondre », que l'appli d'origine
+     * (Messages, WhatsApp…) envoie elle-même. false : notification disparue,
+     * sans action de réponse, ou écoute débranchée
+     */
+    static boolean reply(String key, String text) {
+        PhoneNotificationListenerService s = instance;
+        if (s == null)
+            return false;
+        StatusBarNotification[] found = s.getActiveNotifications(new String[] { key });
+        if (found == null || found.length == 0 || found[0] == null)
+            return false;
+        Notification.Action action = replyAction(found[0].getNotification());
+        if (action == null)
+            return false;
+        Intent intent = new Intent();
+        Bundle results = new Bundle();
+        for (RemoteInput r : action.getRemoteInputs())
+            results.putCharSequence(r.getResultKey(), text);
+        RemoteInput.addResultsToIntent(action.getRemoteInputs(), intent, results);
+        try {
+            action.actionIntent.send(s, 0, intent);
+            return true;
+        } catch (PendingIntent.CanceledException e) {
+            Log.w(TAG, "Reply action cancelled", e);
+            return false;
+        }
+    }
+
     private static Uri itemUri(String key) {
         return new Uri.Builder().scheme(PutDataRequest.WEAR_URI_SCHEME).path(itemPath(key)).build();
     }
 
     private void sendToWatch(String key, String appName, String title, String text,
-                             Bitmap icon, Bitmap picture) {
+                             Bitmap icon, Bitmap picture, boolean canReply) {
         new Thread(() -> {
             try {
                 PutDataMapRequest mapRequest = PutDataMapRequest.create(itemPath(key));
                 mapRequest.getDataMap().putString("appName", appName);
                 mapRequest.getDataMap().putString("title", title);
                 mapRequest.getDataMap().putString("text", text);
+                mapRequest.getDataMap().putBoolean("canReply", canReply);
                 mapRequest.getDataMap().putLong("timestamp", System.currentTimeMillis());
 
                 if (icon != null) {
@@ -263,5 +335,19 @@ public class PhoneNotificationListenerService extends NotificationListenerServic
         if (sender != null && extras.getBoolean(Notification.EXTRA_IS_GROUP_CONVERSATION))
             return sender + " : " + text.toString().trim();
         return text.toString().trim();
+    }
+
+    /**
+     * Conversation dont le dernier message est le sien : la notification est
+     * mise à jour après une réponse (depuis la bulle ou ailleurs). Rien de
+     * nouveau à signaler. Un message de soi n'a ni sender ni sender_person.
+     */
+    static boolean lastMessageFromSelf(Bundle extras) {
+        Parcelable[] messages = extras.getParcelableArray(Notification.EXTRA_MESSAGES);
+        if (messages == null || messages.length == 0
+                || !(messages[messages.length - 1] instanceof Bundle))
+            return false;
+        Bundle last = (Bundle) messages[messages.length - 1];
+        return last.getCharSequence("sender") == null && last.getParcelable("sender_person") == null;
     }
 }

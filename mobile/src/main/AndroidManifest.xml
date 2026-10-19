@@ -34,6 +34,19 @@
             </intent-filter>
         </service>
 
+        <!-- Réponses rapides choisies sur la montre -->
+        <service
+            android:name=".ReplyListenerService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
+                <data
+                    android:scheme="wear"
+                    android:host="*"
+                    android:path="/reply" />
+            </intent-filter>
+        </service>
+
         <!-- Battement de cœur vers la montre, toutes les 15 min -->
         <receiver
             android:name=".HeartbeatReceiver"

@@ -12,6 +12,7 @@ import com.google.android.gms.wearable.DataEvent;
 import com.google.android.gms.wearable.DataEventBuffer;
 import com.google.android.gms.wearable.DataMap;
 import com.google.android.gms.wearable.DataMapItem;
+import com.google.android.gms.wearable.MessageEvent;
 import com.google.android.gms.wearable.Wearable;
 import com.google.android.gms.wearable.WearableListenerService;
 
@@ -22,6 +23,15 @@ public class DataLayerListenerService extends WearableListenerService {
     private static final String TAG = "DefiDataLayer";
     /** Une notification du téléphone par élément : /notification/<clé encodée> */
     private static final String NOTIF_PREFIX = "/notification/";
+
+    /** Accusé du téléphone pour une réponse rapide */
+    @Override
+    public void onMessageReceived(MessageEvent event) {
+        if ((ReplySender.REPLY_PATH + "/ok").equals(event.getPath()))
+            NotificationHolder.replyResult(true);
+        else if ((ReplySender.REPLY_PATH + "/fail").equals(event.getPath()))
+            NotificationHolder.replyResult(false);
+    }
 
     /** Téléphone joignable ou non : témoin de lien coupé sur le cadran */
     @Override
@@ -64,7 +74,10 @@ public class DataLayerListenerService extends WearableListenerService {
             Bitmap icon = loadAssetBitmap(map.getAsset("icon"));
             Bitmap picture = loadAssetBitmap(map.getAsset("picture"));
 
-            NotificationHolder.set(key, appName, title, text, icon, picture, null);
+            // Réponse possible : la bulle propose Oui / Non / OK / ✎ (envoyés par le téléphone)
+            String replyId = map.getBoolean("canReply", false)
+                    ? path.substring(NOTIF_PREFIX.length()) : null;
+            NotificationHolder.set(key, appName, title, text, icon, picture, null, replyId);
             ScreenWaker.wake(this);
         }
     }

@@ -37,6 +37,9 @@ public class DefiNotificationListenerService extends NotificationListenerService
                 | Notification.FLAG_NO_CLEAR | Notification.FLAG_GROUP_SUMMARY)) != 0)
             return;
         Bundle extras = notif.extras;
+        // Mise à jour après sa propre réponse : pas de nouvelle notification
+        if (lastMessageFromSelf(extras))
+            return;
 
         // App name
         String appName = "";
@@ -91,7 +94,7 @@ public class DefiNotificationListenerService extends NotificationListenerService
         PendingIntent contentIntent = notif.contentIntent;
 
         Log.d(TAG, "Notification: " + appName + " / " + title + " / " + text);
-        NotificationHolder.set("local:" + sbn.getKey(), appName, title, text, iconBmp, picture, contentIntent);
+        NotificationHolder.set("local:" + sbn.getKey(), appName, title, text, iconBmp, picture, contentIntent, null);
         ScreenWaker.wake(this);
     }
 
@@ -122,5 +125,19 @@ public class DefiNotificationListenerService extends NotificationListenerService
         if (sender != null && extras.getBoolean(Notification.EXTRA_IS_GROUP_CONVERSATION))
             return sender + " : " + text.toString().trim();
         return text.toString().trim();
+    }
+
+    /**
+     * Conversation dont le dernier message est le sien : la notification est
+     * mise à jour après une réponse (depuis la bulle ou ailleurs). Rien de
+     * nouveau à signaler. Un message de soi n'a ni sender ni sender_person.
+     */
+    static boolean lastMessageFromSelf(Bundle extras) {
+        Parcelable[] messages = extras.getParcelableArray(Notification.EXTRA_MESSAGES);
+        if (messages == null || messages.length == 0
+                || !(messages[messages.length - 1] instanceof Bundle))
+            return false;
+        Bundle last = (Bundle) messages[messages.length - 1];
+        return last.getCharSequence("sender") == null && last.getParcelable("sender_person") == null;
     }
 }

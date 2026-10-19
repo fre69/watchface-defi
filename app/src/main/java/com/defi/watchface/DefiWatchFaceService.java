@@ -62,6 +62,9 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
 
     private static final String TAG = "DefiWF";
 
+    /** Réponses rapides de la bulle ; le dernier bouton (✎) ouvre la saisie libre */
+    private static final String[] QUICK_REPLIES = { "Oui", "Non", "OK" };
+
     // --- IDs des ComplicationSlots ---
     public static final int COMPL_STEPS = 100;
     public static final int COMPL_CALORIES = 101;
@@ -263,12 +266,23 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
                     renderer.invalidate();
                     return;
                 }
+                // Réponse rapide : Oui / Non / OK envoyés par le téléphone, ✎ saisie libre
+                int chip = renderer.replyChipAt(tapEvent.getXPos(), tapEvent.getYPos());
+                if (chip >= 0) {
+                    String replyId = NotificationHolder.getReplyId();
+                    if (chip < QUICK_REPLIES.length) {
+                        ReplySender.send(DefiWatchFaceService.this, replyId, QUICK_REPLIES[chip]);
+                    } else {
+                        startActivity(new android.content.Intent(DefiWatchFaceService.this, ReplyActivity.class)
+                                .putExtra(ReplyActivity.EXTRA_REPLY_ID, replyId)
+                                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));
+                    }
+                    renderer.invalidate();
+                    return;
+                }
                 // Bouton : notification suivante s'il en reste (›), sinon fermeture (✕)
                 if (renderer.isOnCloseButton(tapEvent.getXPos(), tapEvent.getYPos())) {
-                    if (NotificationHolder.getPendingCount() > 0)
-                        NotificationHolder.open();
-                    else
-                        NotificationHolder.dismiss();
+                    NotificationHolder.next();
                     renderer.invalidate();
                     return;
                 }
@@ -327,6 +341,8 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         private final RectF arcInner = new RectF();
         private final RectF closeRing = new RectF();
         private final RectF badgeIcon = new RectF();
+        private final RectF chipRect = new RectF();
+        private final android.os.Handler uiHandler = new android.os.Handler(android.os.Looper.getMainLooper());
 
         // --- Caches : recalculés seulement quand leur source change ---
         private ComplicationData weatherIconSrc;
@@ -372,6 +388,8 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         private final Paint pCloseBg = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint pCloseX = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint pCloseRing = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint pChip = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final TextPaint pReplyState = new TextPaint(Paint.ANTI_ALIAS_FLAG);
         private final Paint pBadgeDot = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint pBadgeCount = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint pBitmap = new Paint(Paint.FILTER_BITMAP_FLAG);
@@ -393,6 +411,14 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         private static final float BADGE_DX = 0.335f;
         private static final float BADGE_Y = 0.442f;
         private static final float BADGE_RADIUS = 0.06f;
+
+        // Boutons de réponse de la bulle (fractions de l'écran)
+        private static final float CHIP_Y = 0.70f;
+        private static final float CHIP_W = 0.17f;
+        private static final float CHIP_H = 0.085f;
+        private static final float CHIP_GAP = 0.025f;
+        /** « Envoyé » reste affiché ce temps, puis la bulle passe à la suite */
+        private static final long REPLY_SENT_SHOWN_MS = 2_500L;
         // Bande de l'heure, sensible à l'appui tant qu'une notification attend
         private static final float BADGE_ZONE_TOP = 0.36f;
         private static final float BADGE_ZONE_BOTTOM = 0.56f;
@@ -1000,20 +1026,86 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
                 contentY += picture.getHeight() + 8;
             }
 
-            // Texte (word-wrap avec StaticLayout)
+            // Texte (word-wrap avec StaticLayout), coupé au-dessus des boutons de réponse
+            boolean canReply = NotificationHolder.getReplyId() != null;
             StaticLayout layout = notifTextLayout(NotificationHolder.getText());
             if (layout != null) {
                 c.save();
+                if (canReply)
+                    c.clipRect(0, 0, W * 2, y(CHIP_Y) - W * CHIP_H / 2f - 6);
                 c.translate(CX - layout.getWidth() / 2f, contentY);
                 layout.draw(c);
                 c.restore();
             }
+            if (canReply)
+                drawReplyRow(c);
 
             // D'autres notifications attendent : bouton « suivante » et nombre restant
             int more = NotificationHolder.getPendingCount();
             drawCloseButton(c, NotificationHolder.getRemaining(), more > 0);
             if (more > 0)
                 c.drawText("+" + more, CX + W * CLOSE_RADIUS * 2.6f, y(CLOSE_Y) + 9, pNotifApp);
+        }
+
+        /** Boutons Oui / Non / OK / ✎, ou l'état de la réponse partie */
+        private void drawReplyRow(Canvas c) {
+            int state = NotificationHolder.getReplyState();
+            float cy = y(CHIP_Y);
+            if (state == NotificationHolder.REPLY_NONE) {
+                for (int i = 0; i <= QUICK_REPLIES.length; i++) {
+                    chipBounds(i);
+                    c.drawRoundRect(chipRect, chipRect.height() / 2f, chipRect.height() / 2f, pCloseBg);
+                    String label = i < QUICK_REPLIES.length ? QUICK_REPLIES[i] : "\u270E";
+                    c.drawText(label, chipRect.centerX(), cy + pNotifApp.getTextSize() * 0.36f, pChip);
+                }
+                return;
+            }
+            String txt;
+            if (state == NotificationHolder.REPLY_SENDING) {
+                txt = "Envoi de « " + NotificationHolder.getReplyText() + " »…";
+                pReplyState.setColor(COL_GREY);
+            } else if (state == NotificationHolder.REPLY_SENT) {
+                txt = "\u2713 « " + NotificationHolder.getReplyText() + " » envoyé";
+                pReplyState.setColor(COL_STEPS);
+                long left = REPLY_SENT_SHOWN_MS
+                        - (System.currentTimeMillis() - NotificationHolder.getReplyAt());
+                if (left <= 0) {
+                    // Réponse partie : notification suivante, ou retour au cadran
+                    NotificationHolder.next();
+                    postInvalidate();
+                } else {
+                    uiHandler.postDelayed(this::postInvalidate, left + 50);
+                }
+            } else {
+                txt = "\u2717 Réponse non envoyée";
+                pReplyState.setColor(COL_HEALTH);
+                uiHandler.postDelayed(this::postInvalidate, 3_100L);
+            }
+            txt = TextUtils.ellipsize(txt, pReplyState, W * 0.78f, TextUtils.TruncateAt.MIDDLE).toString();
+            c.drawText(txt, CX, cy + pReplyState.getTextSize() * 0.36f, pReplyState);
+        }
+
+        private void chipBounds(int i) {
+            int n = QUICK_REPLIES.length + 1;
+            float w = W * CHIP_W, gap = W * CHIP_GAP, h = W * CHIP_H;
+            float left = CX - (n * w + (n - 1) * gap) / 2f + i * (w + gap);
+            float cy = y(CHIP_Y);
+            chipRect.set(left, cy - h / 2f, left + w, cy + h / 2f);
+        }
+
+        /** Bouton de réponse sous le doigt (zone élargie), -1 : aucun ou pas de réponse possible */
+        int replyChipAt(int x, int y) {
+            if (NotificationHolder.getReplyId() == null
+                    || NotificationHolder.getReplyState() != NotificationHolder.REPLY_NONE)
+                return -1;
+            for (int i = 0; i <= QUICK_REPLIES.length; i++) {
+                chipBounds(i);
+                float gx = W * CHIP_GAP / 2f, gy = chipRect.height() * 0.4f;
+                if (x >= chipRect.left - gx && x <= chipRect.right + gx
+                        && y >= chipRect.top - gy && y <= chipRect.bottom + gy)
+                    return i;
+            }
+            return -1;
         }
 
         /** Bouton ✕ (› si next), cerclé de la part du temps d'affichage restante (1 → 0) */
@@ -1117,6 +1209,8 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             pCloseBg.setColor(COL_SEP);
             setupStroke(pCloseX, COL_WHITE, 4);
             setupStroke(pCloseRing, COL_VIOLET, 4);
+            setupText(pChip, COL_WHITE, 24, bold);
+            setupText(pReplyState, COL_GREY, 24, bold);
             pBadgeDot.setColor(COL_VIOLET);
             setupText(pBadgeCount, COL_BG, 18, bold);
             // Home Assistant : ligne maison, vigilance, vignette de la voiture

@@ -47,8 +47,17 @@ et les envoie à la montre via la **Wearable DataLayer API** (`play-services-wea
   = mise à jour qui remplace). **Pastille** à droite de l'heure (icône de la plus récente, nombre en
   attente) ; un appui sur la pastille ou l'heure ouvre la plus récente (bulle 60 s). Le bouton du
   bas est un **›** tant qu'il en reste (« +N » à droite) et passe à la suivante, puis un ✕
-- **Doublons montre / téléphone** : une appli installée des deux côtés (WhatsApp, gardé sur la montre
-  pour répondre) envoie le même message deux fois. Même appli + titre + texte = une seule entrée,
+- **Réponses rapides** : si la notif du téléphone a une action « Répondre » à saisie libre
+  (`WearableExtender` d'abord, sinon `actions`), `canReply=true` ; la bulle propose Oui / Non / OK / ✎
+  (✎ = `ReplyActivity`, saisie du système via `androidx.wear:wear-input`). La montre envoie
+  `/reply` (MessageClient : « id du chemin\ntexte ») ; `ReplyListenerService` (téléphone) remplit le
+  `RemoteInput` et déclenche l'action, comme Android Auto, puis accuse `/reply/ok|fail`. Vérifié le
+  2026-10-19 avec Messages (SMS). Une notif mise à jour dont le dernier message est le sien (sans
+  `sender` ni `sender_person`) n'est pas relayée : c'est l'écho de sa réponse
+- Les petites icônes sont teintées en blanc côté téléphone (silhouettes : celle de Messages sortait
+  noire sur noir)
+- **Doublons montre / téléphone** : une appli installée des deux côtés envoie le même message deux
+  fois (WhatsApp, désinstallé de la montre le 2026-10-19 : les réponses rapides le remplacent). Même appli + titre + texte = une seule entrée,
   qui garde l'action de la copie locale (appui = WhatsApp de la montre) ; un doublon arrivé jusqu'à
   2 min après la lecture de son jumeau est absorbé. Effacer une copie retire l'entrée
 - Notification lue ou effacée (téléphone, ou notif locale de la montre) : retirée de la file
@@ -139,6 +148,7 @@ Lu dans le code décompilé (`wear-services.jar`, `services.jar`, `HeyClockworkS
 - `app/src/main/java/com/defi/watchface/ScreenWaker.java` — Allumage de l'écran à l'arrivée d'une notif
 - `app/src/main/java/com/defi/watchface/HomeData.java` — Météo de la maison et dernière voiture reçues de HA
 - `app/src/main/java/com/defi/watchface/PhoneLink.java` — Témoin de lien téléphone coupé
+- `app/src/main/java/com/defi/watchface/ReplySender.java` / `ReplyActivity.java` — Réponses rapides depuis la bulle
 - `app/src/main/AndroidManifest.xml` — Déclaration des services
 - `app/build.gradle` — Dépendances (watchface, watchface-guava, guava, play-services-wearable)
 
@@ -146,6 +156,7 @@ Lu dans le code décompilé (`wear-services.jar`, `services.jar`, `HeyClockworkS
 - `mobile/src/main/java/com/defi/watchface/mobile/PhoneNotificationListenerService.java` — Capture notifs + envoi DataLayer
 - `mobile/src/main/java/com/defi/watchface/mobile/HaLink.java` — WebSocket Home Assistant + envoi DataLayer
 - `mobile/src/main/java/com/defi/watchface/mobile/HeartbeatReceiver.java` — Battement de cœur vers la montre
+- `mobile/src/main/java/com/defi/watchface/mobile/ReplyListenerService.java` — Exécution des réponses rapides
 - `mobile/src/main/java/com/defi/watchface/mobile/MainActivity.java` — Activation du listener, URL/jeton HA, batterie
 - `mobile/src/main/AndroidManifest.xml`
 - `mobile/build.gradle`
