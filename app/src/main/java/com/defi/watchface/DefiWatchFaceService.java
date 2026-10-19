@@ -262,10 +262,19 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
                     renderer.invalidate();
                     return;
                 }
-                // Tout appui ferme la bulle ; hors du bouton ✕, il ouvre aussi
-                // la notification quand elle en porte l'action (notifs locales)
+                // Bouton : notification suivante s'il en reste (›), sinon fermeture (✕)
+                if (renderer.isOnCloseButton(tapEvent.getXPos(), tapEvent.getYPos())) {
+                    if (NotificationHolder.getPendingCount() > 0)
+                        NotificationHolder.open();
+                    else
+                        NotificationHolder.dismiss();
+                    renderer.invalidate();
+                    return;
+                }
+                // Ailleurs : fermeture (les suivantes gardent la pastille), et ouverture
+                // de la notification quand elle en porte l'action (notifs locales)
                 android.app.PendingIntent intent = NotificationHolder.getContentIntent();
-                if (intent != null && !renderer.isOnCloseButton(tapEvent.getXPos(), tapEvent.getYPos())) {
+                if (intent != null) {
                     try {
                         intent.send();
                     } catch (android.app.PendingIntent.CanceledException e) {
@@ -872,7 +881,7 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
                 c.drawText("Véhicule présent", CX, y(0.78f), pHomeLine);
             }
             long elapsed = System.currentTimeMillis() - carViewOpenedAt;
-            drawCloseButton(c, Math.max(0f, 1f - elapsed / (float) CAR_VIEW_MS));
+            drawCloseButton(c, Math.max(0f, 1f - elapsed / (float) CAR_VIEW_MS), false);
         }
 
         private String hhmm(long epochMs) {
@@ -916,7 +925,7 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             float bx = CX + W * BADGE_DX, by = y(BADGE_Y);
             c.drawCircle(bx, by, r, pCloseBg);
             c.drawCircle(bx, by, r, pCloseRing);
-            Bitmap icon = NotificationHolder.getIcon();
+            Bitmap icon = NotificationHolder.getPendingIcon();
             if (icon != null) {
                 float h = r * 0.62f;
                 badgeIcon.set(bx - h, by - h, bx + h, by + h);
@@ -975,11 +984,15 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
                 c.restore();
             }
 
-            drawCloseButton(c, NotificationHolder.getRemaining());
+            // D'autres notifications attendent : bouton « suivante » et nombre restant
+            int more = NotificationHolder.getPendingCount();
+            drawCloseButton(c, NotificationHolder.getRemaining(), more > 0);
+            if (more > 0)
+                c.drawText("+" + more, CX + W * CLOSE_RADIUS * 2.6f, y(CLOSE_Y) + 9, pNotifApp);
         }
 
-        /** Bouton ✕, cerclé de la part du temps d'affichage restante (1 → 0) */
-        private void drawCloseButton(Canvas c, float remaining) {
+        /** Bouton ✕ (› si next), cerclé de la part du temps d'affichage restante (1 → 0) */
+        private void drawCloseButton(Canvas c, float remaining, boolean next) {
             float r = W * CLOSE_RADIUS;
             float cy = y(CLOSE_Y);
             c.drawCircle(CX, cy, r, pCloseBg);
@@ -987,8 +1000,13 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             closeRing.set(CX - rr, cy - rr, CX + rr, cy + rr);
             c.drawArc(closeRing, -90, 360 * remaining, false, pCloseRing);
             float k = r * 0.4f;
-            c.drawLine(CX - k, cy - k, CX + k, cy + k, pCloseX);
-            c.drawLine(CX - k, cy + k, CX + k, cy - k, pCloseX);
+            if (next) {
+                c.drawLine(CX - k * 0.5f, cy - k, CX + k * 0.5f, cy, pCloseX);
+                c.drawLine(CX + k * 0.5f, cy, CX - k * 0.5f, cy + k, pCloseX);
+            } else {
+                c.drawLine(CX - k, cy - k, CX + k, cy + k, pCloseX);
+                c.drawLine(CX - k, cy + k, CX + k, cy - k, pCloseX);
+            }
         }
 
         /** Zone d'appui du bouton ✕, plus large que son dessin pour un doigt */

@@ -1,6 +1,7 @@
 package com.defi.watchface;
 
 import android.app.Notification;
+import android.app.Person;
 import android.app.PendingIntent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
@@ -9,6 +10,7 @@ import android.graphics.Canvas;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.Icon;
 import android.os.Bundle;
+import android.os.Parcelable;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
 import android.util.Log;
@@ -51,6 +53,9 @@ public class DefiNotificationListenerService extends NotificationListenerService
         CharSequence txt = extras.getCharSequence(Notification.EXTRA_TEXT);
         String title = t != null ? t.toString() : "";
         String text = txt != null ? txt.toString().trim() : "";
+        String message = lastMessage(extras);
+        if (message != null)
+            text = message;
 
         // Picture (photo attachée : WhatsApp, MMS, Instagram, etc.)
         Bitmap picture = null;
@@ -94,5 +99,28 @@ public class DefiNotificationListenerService extends NotificationListenerService
     public void onNotificationRemoved(StatusBarNotification sbn) {
         // Effacée sur la montre (fiche système) : plus de pastille
         NotificationHolder.clearPending("local:" + sbn.getKey());
+    }
+
+    /**
+     * Conversation (MessagingStyle) : le dernier message, préfixé de son auteur
+     * dans un groupe. EXTRA_TEXT n'est souvent qu'un résumé (« 3 messages »)
+     * ou le premier message. null : pas une conversation.
+     */
+    static String lastMessage(Bundle extras) {
+        Parcelable[] messages = extras.getParcelableArray(Notification.EXTRA_MESSAGES);
+        if (messages == null || messages.length == 0
+                || !(messages[messages.length - 1] instanceof Bundle))
+            return null;
+        Bundle last = (Bundle) messages[messages.length - 1];
+        CharSequence text = last.getCharSequence("text");
+        if (text == null)
+            return null;
+        CharSequence sender = last.getCharSequence("sender");
+        Person person = last.getParcelable("sender_person");
+        if (person != null && person.getName() != null)
+            sender = person.getName();
+        if (sender != null && extras.getBoolean(Notification.EXTRA_IS_GROUP_CONVERSATION))
+            return sender + " : " + text.toString().trim();
+        return text.toString().trim();
     }
 }

@@ -37,13 +37,24 @@ sans transiter par le `NotificationManager` Android. Le `NotificationListenerSer
 **Solution** : module `mobile` (app compagnon téléphone) qui capture les notifs côté téléphone
 et les envoie à la montre via la **Wearable DataLayer API** (`play-services-wearable`).
 - La DataLayer envoie le contenu enrichi (titre, texte, picture), en **urgent** (`setUrgent()`)
-- Le cadran signale la notification par une **pastille** (icône de l'app, compteur, à droite de
-  l'heure) ; un appui sur la pastille ou sur l'heure ouvre la bulle (60 s, fermable par ✕)
-- Notification lue ou effacée sur le téléphone : le module mobile réécrit l'élément `/notification`
-  avec `cleared=true` et la clé de la notif (urgent) ; la montre retire la pastille si la clé est
-  celle qu'elle signale, **sans allumer l'écran** et sans fermer une bulle ouverte. Même chose pour
-  une notification locale effacée sur la montre (clés préfixées `phone:` / `local:` dans
-  `NotificationHolder`)
+- **Un élément DataLayer par notification** : `/notification/<clé sbn en Base64 URL>`, supprimé
+  (`deleteDataItems`) quand la notif disparaît du téléphone ; la montre reçoit `TYPE_DELETED`.
+  Un élément unique réécrit à chaque fois perdait des événements rapprochés (« Tout effacer »).
+  `purgeStaleItems()` supprime au branchement de l'écoute les éléments de notifs disparues entre-temps
+- Conversations (MessagingStyle) : texte = **dernier message** de `EXTRA_MESSAGES` (auteur en
+  préfixe dans un groupe) ; `EXTRA_TEXT` n'est souvent qu'un résumé ou le premier message
+- Le cadran garde une **file** (`NotificationHolder`, la plus récente en tête, 20 au plus ; même clé
+  = mise à jour qui remplace). **Pastille** à droite de l'heure (icône de la plus récente, nombre en
+  attente) ; un appui sur la pastille ou l'heure ouvre la plus récente (bulle 60 s). Le bouton du
+  bas est un **›** tant qu'il en reste (« +N » à droite) et passe à la suivante, puis un ✕
+- Notification lue ou effacée (téléphone, ou notif locale de la montre) : retirée de la file
+  **sans allumer l'écran**, et sa bulle se ferme si elle était affichée. Clés préfixées
+  `phone:` / `local:`
+- « Tout effacer » dans la zone de notifications **de la montre** : les notifs relayées par OHealth
+  n'y sont pas des notifications Android (invisibles au listener de la montre), mais OHealth les
+  efface aussi sur le téléphone, d'où la suppression DataLayer (vérifié le 2026-10-19 avec un SMS,
+  moins d'1 s). Les notifs `cmd notification post` (paquet Shell) ne sont pas relayées par OHealth :
+  inutilisables pour tester ce chemin
 - `ScreenWaker` allume l'écran à la réception (sauf Ne pas déranger), ce qui permet de couper
   le lever de poignet
 

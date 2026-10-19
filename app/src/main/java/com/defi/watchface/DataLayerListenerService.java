@@ -20,7 +20,8 @@ import java.io.InputStream;
 public class DataLayerListenerService extends WearableListenerService {
 
     private static final String TAG = "DefiDataLayer";
-    private static final String NOTIF_PATH = "/notification";
+    /** Une notification du téléphone par élément : /notification/<clé encodée> */
+    private static final String NOTIF_PREFIX = "/notification/";
 
     /** Téléphone joignable ou non : témoin de lien coupé sur le cadran */
     @Override
@@ -32,23 +33,27 @@ public class DataLayerListenerService extends WearableListenerService {
     @Override
     public void onDataChanged(DataEventBuffer dataEvents) {
         for (DataEvent event : dataEvents) {
+            String path = event.getDataItem().getUri().getPath();
+            boolean notif = path != null && path.startsWith(NOTIF_PREFIX);
+            String key = notif ? "phone:" + path.substring(NOTIF_PREFIX.length()) : null;
+
+            // Notification lue ou effacée sur le téléphone : élément supprimé, la
+            // montre la retire de sa file, sans allumer l'écran
+            if (event.getType() == DataEvent.TYPE_DELETED) {
+                if (notif) {
+                    Log.d(TAG, "Notification removed on phone: " + key);
+                    NotificationHolder.clearPending(key);
+                }
+                continue;
+            }
             if (event.getType() != DataEvent.TYPE_CHANGED) continue;
             // Météo et voiture de Home Assistant : affichées sans allumer l'écran
             if (HomeData.apply(this, event.getDataItem())) continue;
             // Battement de cœur du téléphone : témoin de lien coupé
             if (PhoneLink.apply(event.getDataItem())) continue;
-            if (!NOTIF_PATH.equals(event.getDataItem().getUri().getPath())) continue;
+            if (!notif) continue;
 
             DataMap map = DataMapItem.fromDataItem(event.getDataItem()).getDataMap();
-            String key = "phone:" + map.getString("key", "");
-
-            // Notification lue ou effacée sur le téléphone : retirer la pastille,
-            // sans allumer l'écran
-            if (map.getBoolean("cleared", false)) {
-                Log.d(TAG, "Notification cleared on phone: " + key);
-                NotificationHolder.clearPending(key);
-                continue;
-            }
 
             String appName = map.getString("appName", "");
             String title = map.getString("title", "");
