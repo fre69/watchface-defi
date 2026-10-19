@@ -348,6 +348,7 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         private final Paint pInfo = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint pDate = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint pBattTxt = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint pLinkDown = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint pSep = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint pBarBg = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint pBarFill = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -407,12 +408,16 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             // Données Home Assistant : dernier état gardé par la DataLayer, puis chaque envoi
             HomeData.setOnChangeListener(this::postInvalidate);
             HomeData.load(DefiWatchFaceService.this);
+            // Témoin de lien téléphone coupé
+            PhoneLink.setOnChangeListener(this::postInvalidate);
+            PhoneLink.load(DefiWatchFaceService.this);
         }
 
         @Override
         public void onDestroy() {
             NotificationHolder.setOnChangeListener(null);
             HomeData.setOnChangeListener(null);
+            PhoneLink.setOnChangeListener(null);
             super.onDestroy();
         }
 
@@ -898,7 +903,11 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             pBarFill.setAlpha(230);
             c.drawRoundRect(left, barY, left + fill, barY + bh, 4, 4, pBarFill);
             pBattTxt.setColor(batt > 20 ? COL_BLUE : COL_HEALTH);
-            c.drawText(batt + "%", CX, y(0.90f), pBattTxt);
+            String txt = batt + "%";
+            c.drawText(txt, CX, y(0.90f), pBattTxt);
+            // Lien téléphone coupé : plus de notifications ni de données Home Assistant
+            if (PhoneLink.isDown())
+                c.drawText("\uD83D\uDCF5", CX - pBattTxt.measureText(txt) / 2f - 8, y(0.90f), pLinkDown);
         }
 
         // --- PASTILLE : notification en attente, ouverte par un appui ---
@@ -1038,6 +1047,8 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             setupText(pInfo, COL_VIOLET, 32, bold);
             setupText(pDate, COL_WHITE, 32, bold);
             setupText(pBattTxt, COL_BLUE, 32, bold);
+            setupText(pLinkDown, COL_HEALTH, 28, bold);
+            pLinkDown.setTextAlign(Paint.Align.RIGHT);
             // Ambient mode settings
             pSep.setColor(COL_GREY);
             pSep.setAlpha(115);

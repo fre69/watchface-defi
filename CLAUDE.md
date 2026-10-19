@@ -47,6 +47,23 @@ et les envoie à la montre via la **Wearable DataLayer API** (`play-services-wea
 - `ScreenWaker` allume l'écran à la réception (sauf Ne pas déranger), ce qui permet de couper
   le lever de poignet
 
+### Témoin de lien téléphone coupé (`PhoneLink`)
+📵 rouge à gauche du pourcentage de batterie quand les notifications ne peuvent plus arriver :
+- **Téléphone injoignable** : l'appli `mobile` annonce la capability `defi_phone`
+  (`res/values/wear.xml`) ; `DataLayerListenerService.onCapabilityChanged` suit les nœuds joignables.
+  Téléphone sans cette capability (ancienne appli) : état inconnu, pas de témoin.
+- **Appli du téléphone muette** : `HeartbeatReceiver` écrit `/phone/alive` toutes les 15 min
+  (AlarmManager `setAndAllowWhileIdle` : un `Handler` ne compte pas le temps de veille profonde),
+  sans urgence, seulement si l'écoute des notifications est branchée (sinon `requestRebind`).
+  Plus d'1 h sans battement : témoin.
+- ⚠️ **Bluetooth perdu ≠ lien coupé** (vérifié le 2026-10-19) : Wear OS rallume aussitôt le Wi-Fi
+  de la montre (`svc wifi disable` n'y résiste pas) et la DataLayer passe par le cloud
+  (`hops=2, isNearby=false`) ; une notif y est arrivée en 5 s. Le témoin ne s'allume que si aucun
+  chemin ne reste. Test réel : mode avion sur le téléphone.
+- ⚠️ `pm disable-user` de l'appli du téléphone retire son accès aux notifications, et la
+  capability n'est pas retirée aussitôt. Rétablir l'accès :
+  `adb shell cmd notification allow_listener com.defi.watchface.distance/com.defi.watchface.mobile.PhoneNotificationListenerService`
+
 ### Données Home Assistant (téléphone → montre)
 L'appli `mobile` garde un WebSocket ouvert vers Home Assistant (`HaLink`, jeton longue durée,
 `subscribe_entities`) et relaie l'état à la montre par la DataLayer ; la montre ne parle jamais à HA
@@ -93,12 +110,14 @@ Lu dans le code décompilé (`wear-services.jar`, `services.jar`, `HeyClockworkS
 - `app/src/main/java/com/defi/watchface/NotificationHolder.java` — Données notification partagées
 - `app/src/main/java/com/defi/watchface/ScreenWaker.java` — Allumage de l'écran à l'arrivée d'une notif
 - `app/src/main/java/com/defi/watchface/HomeData.java` — Météo de la maison et dernière voiture reçues de HA
+- `app/src/main/java/com/defi/watchface/PhoneLink.java` — Témoin de lien téléphone coupé
 - `app/src/main/AndroidManifest.xml` — Déclaration des services
 - `app/build.gradle` — Dépendances (watchface, watchface-guava, guava, play-services-wearable)
 
 **Module `mobile` (téléphone)** :
 - `mobile/src/main/java/com/defi/watchface/mobile/PhoneNotificationListenerService.java` — Capture notifs + envoi DataLayer
 - `mobile/src/main/java/com/defi/watchface/mobile/HaLink.java` — WebSocket Home Assistant + envoi DataLayer
+- `mobile/src/main/java/com/defi/watchface/mobile/HeartbeatReceiver.java` — Battement de cœur vers la montre
 - `mobile/src/main/java/com/defi/watchface/mobile/MainActivity.java` — Activation du listener, URL/jeton HA, batterie
 - `mobile/src/main/AndroidManifest.xml`
 - `mobile/build.gradle`

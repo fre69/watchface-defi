@@ -33,5 +33,10 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+
+        <!-- Battement de cœur vers la montre, toutes les 15 min -->
+        <receiver
+            android:name=".HeartbeatReceiver"
+            android:exported="false" />
     </application>
 </manifest>

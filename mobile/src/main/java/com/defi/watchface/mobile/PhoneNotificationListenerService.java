@@ -29,11 +29,28 @@ public class PhoneNotificationListenerService extends NotificationListenerServic
     /** Clé de la dernière notification envoyée, celle que signale la pastille du cadran */
     private String lastSentKey = null;
 
+    /** Écoute branchée par le système : condition du battement de cœur vers la montre */
+    private static volatile boolean connected = false;
+
+    static boolean isConnected() {
+        return connected;
+    }
+
     @Override
     public void onListenerConnected() {
         Log.d(TAG, "Phone notification listener connected");
+        connected = true;
+        // Battement aussitôt (la montre retire le témoin de lien coupé), puis toutes les 15 min
+        HeartbeatReceiver.send(this);
+        HeartbeatReceiver.schedule(this);
         // Ce service, que le système garde en vie, porte aussi le lien Home Assistant
         HaLink.get(this).start();
+    }
+
+    @Override
+    public void onListenerDisconnected() {
+        Log.w(TAG, "Phone notification listener disconnected");
+        connected = false;
     }
 
     @Override

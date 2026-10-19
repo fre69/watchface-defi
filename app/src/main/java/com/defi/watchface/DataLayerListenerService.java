@@ -6,6 +6,7 @@ import android.util.Log;
 
 import com.google.android.gms.tasks.Tasks;
 import com.google.android.gms.wearable.Asset;
+import com.google.android.gms.wearable.CapabilityInfo;
 import com.google.android.gms.wearable.DataClient;
 import com.google.android.gms.wearable.DataEvent;
 import com.google.android.gms.wearable.DataEventBuffer;
@@ -21,12 +22,21 @@ public class DataLayerListenerService extends WearableListenerService {
     private static final String TAG = "DefiDataLayer";
     private static final String NOTIF_PATH = "/notification";
 
+    /** Téléphone joignable ou non : témoin de lien coupé sur le cadran */
+    @Override
+    public void onCapabilityChanged(CapabilityInfo info) {
+        if (PhoneLink.CAPABILITY.equals(info.getName()))
+            PhoneLink.setReachable(!info.getNodes().isEmpty());
+    }
+
     @Override
     public void onDataChanged(DataEventBuffer dataEvents) {
         for (DataEvent event : dataEvents) {
             if (event.getType() != DataEvent.TYPE_CHANGED) continue;
             // Météo et voiture de Home Assistant : affichées sans allumer l'écran
             if (HomeData.apply(this, event.getDataItem())) continue;
+            // Battement de cœur du téléphone : témoin de lien coupé
+            if (PhoneLink.apply(event.getDataItem())) continue;
             if (!NOTIF_PATH.equals(event.getDataItem().getUri().getPath())) continue;
 
             DataMap map = DataMapItem.fromDataItem(event.getDataItem()).getDataMap();
