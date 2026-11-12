@@ -67,8 +67,6 @@ public final class HaLink {
     static final int TEMPLATE_SLOTS = 4;
     /** Entité climate de la tuile Thermostat (« climate.cuisine ») */
     static final String PREF_TILE_CLIMATE = "tile_climate";
-    /** Entité camera de la tuile Caméra : image téléchargée seulement quand la tuile s'affiche */
-    static final String PREF_TILE_CAMERA = "tile_camera";
 
     /** Résultat d'une commande venue de la montre (basculer une entité, question à Assist) */
     public interface Callback {
@@ -106,9 +104,6 @@ public final class HaLink {
     private static final String AGENDA_PATH = "/ha/agenda";
     private static final String TILES_PATH = "/ha/tiles";
     private static final String THERMOSTAT_PATH = "/ha/thermostat";
-    private static final String CAMERA_PATH = "/ha/camera";
-    /** Côté de l'image de la caméra envoyée à la montre (la tuile l'étire à l'écran) */
-    private static final int CAMERA_MAX_PX = 320;
     /** Appuis successifs sur + ou − : la consigne visée sert de base pendant ce délai */
     private static final long CLIMATE_PENDING_MS = 4_000L;
     /** Suivi du numéro de l'emplacement : /ha/template/1 à /ha/template/4 */
@@ -935,14 +930,9 @@ public final class HaLink {
      * suivi en direct pendant une minute. L'heure d'envoi change à chaque fois :
      * la DataLayer transmet donc l'élément même si son contenu n'a pas bougé.
      */
-    public void refreshTiles(String kind) {
+    public void refreshTiles() {
         handler.post(() -> {
             tilesLiveUntil = System.currentTimeMillis() + LIVE_AFTER_VIEW_MS;
-            // Caméra : l'image n'a pas d'état qui change, elle se télécharge à l'affichage
-            if ("camera".equals(kind)) {
-                publishCamera();
-                return;
-            }
             lastTilesSig = null;
             publishTiles();
             lastThermostatSig = null;
@@ -999,22 +989,6 @@ public final class HaLink {
         m.putLong("sentAt", System.currentTimeMillis());
         if (send(req, tilesLive()))
             lastThermostatSig = sig;
-    }
-
-    /** Tuile Caméra : image du moment, envoyée en urgent (la tuile est à l'écran) */
-    private void publishCamera() {
-        String camera = prefs().getString(PREF_TILE_CAMERA, "").trim().toLowerCase(Locale.ROOT);
-        if (camera.isEmpty() || baseUrl().isEmpty())
-            return;
-        // camera_proxy accepte le jeton longue durée ; ne jamais journaliser l'URL
-        Bitmap bmp = download(baseUrl() + "/api/camera_proxy/" + camera);
-        if (bmp == null)
-            return;
-        PutDataMapRequest req = PutDataMapRequest.create(CAMERA_PATH);
-        req.getDataMap().putAsset("picture", toJpeg(scale(bmp, CAMERA_MAX_PX)));
-        req.getDataMap().putLong("sentAt", System.currentTimeMillis());
-        if (send(req, true))
-            Log.d(TAG, "Image de la caméra envoyée à la montre");
     }
 
     /** + ou − sur la tuile Thermostat : consigne décalée d'un pas (target_temp_step, sinon 0,5) */

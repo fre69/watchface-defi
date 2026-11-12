@@ -8,11 +8,12 @@ fait tout le travail réseau ; la montre ne parle jamais à Home Assistant ni à
 **Sur la montre (module `app`)**
 - **Cadran** dessiné en Java (`ListenableWatchFaceService` + `CanvasRenderer`) : heure, date, pas,
   calories, fréquence cardiaque, batterie (complications OHealth), météo de la maison, rendez-vous du
-  jour, vignette de la dernière voiture passée sur le chemin.
+  jour, vignette de la dernière voiture passée sur le chemin (photo en grand à l'appui).
 - **Notifications du téléphone** dans une bulle du cadran, avec réponses rapides (Oui / Non / OK /
   dictée) et allumage de l'écran à l'arrivée.
-- **Tuiles Home Assistant** : Raccourcis (7 entités avec leur état réel et leur icône, + micro),
-  Modèle 1 à 4 (texte d'un modèle HA mis en forme), Thermostat (consigne − / +), Caméra.
+- **Tuiles Home Assistant** : Raccourcis (9 entités avec leur état réel et leur icône, + micro),
+  Modèle 1 à 4 (texte d'un modèle HA mis en forme : horaires d'école et bus des enfants, imprimante
+  3D), Thermostat (consigne − / +).
 - **Assist** : dialogue vocal avec Home Assistant, choisissable comme assistant de la montre.
 
 **Sur le téléphone (module `mobile`)**

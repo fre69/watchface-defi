@@ -110,7 +110,10 @@ que le système garde en vie, porte le lien ; reconnexion seule (coupure, résea
   de vigilance), au moins toutes les 30 min ; au-delà d'1 h sans envoi, le cadran revient à OHealth.
 - `/ha/car` : photo Frigate `image.chemin_car` réduite à 320 px, légende `input_text.derniere_voiture`,
   présence `binary_sensor.chemin_car_occupancy` (cadre orange). Vignette affichée 24 h, appui = photo
-  en grand 30 s. Heure du passage : `lc` de l'entité, pas `lu` (le jeton de `entity_picture`, renouvelé
+  en grand 30 s. Vignette agrandie le 12/11/2026 (rayon 0,095 de l'écran, le plus grand cercle entre
+  l'anneau des calories et l'heure) à la place d'une tuile Caméra (`camera.chemin_last_motion`),
+  retirée : un instantané de caméra n'a ni état ni heure dans HA, et l'heure de capture n'est connue
+  que pour les voitures (`input_text.derniere_voiture`), ce que la vignette montre déjà. Heure du passage : `lc` de l'entité, pas `lu` (le jeton de `entity_picture`, renouvelé
   toutes les 5 min, fait avancer `lu`).
 - `/ha/agenda` : événements **du jour** de 6 agendas (`CALENDARS` dans `HaLink` : Nautile,
   Francois r, Famille, Gmail perso, Anniversaires, Jours fériés) par `calendar.get_events`
@@ -118,9 +121,8 @@ que le système garde en vie, porte le lien ; reconnexion seule (coupure, résea
   changement d'un agenda, de jour, et toutes les 15 min ; envoyé seulement s'il change. Le cadran
   affiche, à la place de l'ancienne ligne FC, le rendez-vous en cours ou le prochain
   (« 16:30 Kiné »), sinon l'événement « journée entière » du jour ; la FC est montée tout en haut
-- Mêmes règles que les capteurs `sensor.montre_meteo` et `sensor.montre_bus_chemin` de
-  `template.yaml` (HA), affichés par les tuiles Modèle : couleurs de vigilance
-  `#ffd600`/`#ff9100`/`#ff1744`, ordre des phénomènes.
+- Couleurs de vigilance `#ffd600`/`#ff9100`/`#ff1744` et ordre des phénomènes : ceux de
+  l'ancien capteur HA `sensor.montre_meteo` (retiré le 12/11/2026 avec sa tuile).
 - La DataLayer garde le dernier élément de chaque chemin : `HomeData.load()` le relit au démarrage du cadran.
 
 ### Tuiles et Assist Home Assistant (remplacent l'appli HA de la montre, 12/11/2026)
@@ -131,21 +133,19 @@ Le fork de l'appli HA (`C:\PROJETS\wearOS-ha`) ne sert plus qu'à une éventuell
 
 | Tuile (carrousel) | Service | Données (téléphone → montre) | Commande (montre → téléphone) |
 |---|---|---|---|
-| Raccourcis HA (7 entités + 🎤) | `ShortcutsTileService` | `/ha/tiles` : état, nom, icône | `/ha/action` « entity_id », échec `/ha/action/fail` |
+| Raccourcis HA (9 entités + 🎤, rangées 3-3-3 ou 3-4-3, cercles de 44 dp au-delà de 8) | `ShortcutsTileService` | `/ha/tiles` : état, nom, icône | `/ha/action` « entity_id », échec `/ha/action/fail` |
 | Modèle HA 1 à 4 | `TemplateTileService$Slot1…4` | `/ha/template/1…4` | — |
 | Thermostat HA | `ThermostatTileService` | `/ha/thermostat` | `/ha/climate` « + » / « - », échec `/ha/climate/fail` |
-| Caméra HA | `CameraTileService` | `/ha/camera` (JPEG 320 px) | — |
 | Assist (appli + 🎤) | `AssistActivity` | réponse `/ha/assist/reply` | `/ha/assist` « texte » |
 
 - **Réglages dans l'appli du téléphone** (section « Tuiles de la montre ») : entités des Raccourcis
   (`entity_id | nom court`, une par ligne), 4 modèles (Jinja, ou un simple `sensor.x` dont l'attribut
-  `texte` est affiché : les capteurs `sensor.montre_*` de `template.yaml`), le `climate` et la `camera`.
+  `texte` est affiché : `sensor.montre_imprimante`, `sensor.montre_ecole` de `template.yaml`) et le `climate`.
 - **Rafraîchissement** : abonnements HA (`subscribe_entities`, `render_template` qui ne renvoie que
   quand le résultat change). Les changements partent **non urgents** (aucun réveil de la montre,
   livrés quand elle est éveillée). Quand une tuile s'affiche (`onTileEnterEvent`, au plus 1 fois / 5 s),
   la montre envoie `/ha/tiles/get` et le téléphone renvoie l'état en urgent (≈ 0,6 s mesuré), puis reste
-  en direct 1 min ; 10 s après un appui aussi. La Caméra (« camera » en charge utile) n'est téléchargée
-  qu'à l'affichage : un instantané de caméra n'a pas d'état qui change.
+  en direct 1 min ; 10 s après un appui aussi.
 - **Appui** : la tuile attend le nouvel état (2,5 s au plus) avant de se redessiner ; contour bleu =
   appui pas encore confirmé, rouge = refusé. Bascule comme l'appli HA (`lock`/`unlock`,
   `cover.toggle`, `turn_on` des scènes et scripts, `press` des boutons, sinon `homeassistant.toggle`).
@@ -174,8 +174,8 @@ Le fork de l'appli HA (`C:\PROJETS\wearOS-ha`) ne sert plus qu'à une éventuell
   assistant de la montre (bouton).
 - Téléphone éteint ou sans réseau : les tuiles gardent la dernière valeur et affichent « 📵 ».
 - ⚠️ **Toute lecture de la DataLayer a un délai** (`Tasks.await(…, 5 s)`) : les tuiles partagent un seul
-  fil (`TileStore.BACKGROUND`), et une pièce jointe pas encore arrivée (l'image de la caméra) les
-  bloquait toutes, sans erreur. L'image de la caméra n'est pas relue au démarrage.
+  fil (`TileStore.BACKGROUND`), et une pièce jointe pas encore arrivée (l'image d'une ancienne tuile
+  Caméra) les bloquait toutes, sans erreur.
 - ⚠️ **Après une réinstallation**, le système garde un moment des liaisons mortes vers l'ancien
   processus (`dumpsys activity services` : `ConnectionRecord … DEAD`) : une tuile reste sur l'icône
   d'attente (« no valid tile data »). Elle revient d'elle-même en repassant dessus ; ce n'est pas un
@@ -214,7 +214,7 @@ Lu dans le code décompilé (`wear-services.jar`, `services.jar`, `HeyClockworkS
 - `app/src/main/java/com/defi/watchface/ReplySender.java` / `ReplyActivity.java` — Réponses rapides depuis la bulle
 - `app/src/main/java/com/defi/watchface/TileStore.java` — Données des tuiles HA, appuis en attente, demande d'état frais
 - `app/src/main/java/com/defi/watchface/ShortcutsTileService.java`, `TemplateTileService.java`,
-  `ThermostatTileService.java`, `CameraTileService.java` — Tuiles Home Assistant
+  `ThermostatTileService.java` — Tuiles Home Assistant
 - `app/src/main/java/com/defi/watchface/AssistActivity.java` — Dialogue avec Assist (appli « Assist HA »,
   icône `res/drawable/ic_assist.xml` : rond bleu HA, `mdi:microphone-message`)
 - `app/src/main/AndroidManifest.xml` — Déclaration des services
@@ -265,7 +265,7 @@ adb -s <phone-serial> install -r mobile/build/outputs/apk/debug/mobile-debug.apk
 # Ajouter une tuile au carrousel sans passer par la montre (elle se place en tête)
 adb shell am broadcast -a com.google.android.wearable.app.DEBUG_SURFACE --es operation add-tile \
   --ecn component 'com.defi.watchface.distance/com.defi.watchface.ShortcutsTileService'
-# (TemplateTileService\$Slot1…4, ThermostatTileService, CameraTileService)
+# (TemplateTileService\$Slot1…4, ThermostatTileService)
 
 # Screenshot montre
 adb exec-out screencap -p > screenshot.png
@@ -322,7 +322,7 @@ adb shell dumpsys bm.manager -ms
   Wear OS 4) est faux sur Wear OS 5 : cf. « Allumage de l'écran » plus haut.
 - **Appli Home Assistant de la montre** (12/11/2026) : notifications perdues (processus coupé écran
   éteint) et Wi-Fi de la montre allumé pour chaque échange. Remplacée par les tuiles et Assist de ce
-  projet ; ses tuiles sont retirées du carrousel. Un message urgent de la DataLayer réveille la
+  projet : appli désinstallée de la montre et appareil « montre » supprimé de HA. Un message urgent de la DataLayer réveille la
   montre en veille Android : les tuiles n'en reçoivent que quand on les regarde.
 
 ## Problèmes connus

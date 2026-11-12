@@ -16,8 +16,7 @@ import java.nio.charset.StandardCharsets;
  * - /ha/assist : texte dicté, posé à Assist ; réponse en /ha/assist/reply
  *   (réussite « 1 »/« 0 », suite attendue « 1 »/« 0 », puis le texte à afficher).
  * - /ha/assist/new : bouton ↺ d'Assist, la conversation repart de zéro.
- * - /ha/tiles/get : une tuile vient de s'afficher, renvoyer l'état frais
- *   (« camera » : télécharger l'image de la caméra).
+ * - /ha/tiles/get : une tuile vient de s'afficher, renvoyer l'état frais.
  * - /ha/climate : « + » ou « - » sur la tuile Thermostat ; échec accusé en
  *   /ha/climate/fail, la nouvelle consigne revient par /ha/thermostat.
  */
@@ -47,7 +46,7 @@ public class HaCommandService extends WearableListenerService {
         } else if (ASSIST_NEW_PATH.equals(path)) {
             link.newConversation();
         } else if (TILES_GET_PATH.equals(path)) {
-            link.refreshTiles(payload);
+            link.refreshTiles();
         } else if (CLIMATE_PATH.equals(path)) {
             link.climateStep("-".equals(payload) ? -1 : 1, (ok, text, more) -> {
                 if (!ok)

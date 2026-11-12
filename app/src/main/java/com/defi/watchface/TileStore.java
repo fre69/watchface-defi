@@ -41,7 +41,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * Données des tuiles Home Assistant, relayées par l'appli du téléphone (HaLink) :
  * état des entités de la tuile Raccourcis (/ha/tiles) et texte des tuiles
- * Modèle 1 à 4 (/ha/template/1 à 4). Le téléphone ne les envoie que quand elles changent ;
+ * Modèle 1 à 4 (/ha/template/1 à 4), Thermostat (/ha/thermostat). Le téléphone ne les envoie que quand elles changent ;
  * la montre ne parle jamais à Home Assistant.
  */
 public final class TileStore {
@@ -53,10 +53,7 @@ public final class TileStore {
     /** Une tuile s'affiche : le téléphone renvoie aussitôt l'état qu'il connaît */
     static final String TILES_GET_PATH = "/ha/tiles/get";
     static final String THERMOSTAT_PATH = "/ha/thermostat";
-    static final String CAMERA_PATH = "/ha/camera";
     static final String CLIMATE_PATH = "/ha/climate";
-    /** Image de la caméra mise à la taille de l'écran rond (pixels RGB_565, sans transparence) */
-    private static final int CAMERA_PX = 240;
     /**
      * Délai maximal d'une lecture de la DataLayer : sans lui, une pièce jointe pas encore
      * arrivée bloque le fil des tuiles, et plus aucune tuile ne répond
@@ -93,17 +90,15 @@ public final class TileStore {
 
     private static List<Entity> entities = Collections.emptyList();
 
-    /** Image prête pour la tuile : pixels bruts, ARGB_8888 (icônes) ou RGB_565 (caméra) */
+    /** Icône prête pour la tuile : pixels ARGB_8888 bruts */
     public static final class Icon {
         public final int width;
         public final int height;
         public final byte[] argb;
-        public final boolean rgb565;
 
         Icon(Bitmap bmp) {
             width = bmp.getWidth();
             height = bmp.getHeight();
-            rgb565 = bmp.getConfig() == Bitmap.Config.RGB_565;
             ByteBuffer buf = ByteBuffer.allocate(bmp.getByteCount());
             bmp.copyPixelsToBuffer(buf);
             argb = buf.array();
@@ -130,10 +125,7 @@ public final class TileStore {
     private static Thermostat thermostat;
     private static long climatePressedAt;
     private static long climateFailedAt;
-    private static Icon camera;
-    private static long cameraAt;
-    /** Dernière demande d'état frais, par genre de tuile (« » ou « camera ») */
-    private static final Map<String, Long> lastRefresh = new HashMap<>();
+    private static long lastRefreshRequest;
 
     private static Map<String, Icon> icons = new HashMap<>();
     private static final String[] templates = { "", "", "", "" };
@@ -186,15 +178,6 @@ public final class TileStore {
         return System.currentTimeMillis() - climateFailedAt < PENDING_MS;
     }
 
-    public static synchronized Icon getCamera() {
-        return camera;
-    }
-
-    /** Version des ressources de la tuile Caméra : change avec l'image */
-    public static synchronized String cameraVersion() {
-        return Long.toHexString(cameraAt);
-    }
-
     /** Appui en cours, pas encore confirmé par un nouvel état */
     public static synchronized boolean isPending(String id) {
         Long t = pressed.get(id);
@@ -222,13 +205,8 @@ public final class TileStore {
             DataItemBuffer items = Tasks.await(Wearable.getDataClient(ctx.getApplicationContext()).getDataItems(),
                     AWAIT_S, TimeUnit.SECONDS);
             try {
-                for (DataItem item : items) {
-                    // L'image de la caméra est redemandée à l'affichage de sa tuile : inutile de
-                    // retarder ici toutes les tuiles (elles partagent le même fil) pour la relire
-                    if (CAMERA_PATH.equals(item.getUri().getPath()))
-                        continue;
+                for (DataItem item : items)
                     apply(ctx, item);
-                }
             } finally {
                 items.release();
             }
@@ -285,18 +263,6 @@ public final class TileStore {
             changed(ctx, ThermostatTileService.class);
             return true;
         }
-        if (CAMERA_PATH.equals(path)) {
-            DataMap m = DataMapItem.fromDataItem(item).getDataMap();
-            Icon picture = loadCamera(ctx, m.getAsset("picture"));
-            if (picture != null) {
-                synchronized (TileStore.class) {
-                    camera = picture;
-                    cameraAt = m.getLong("sentAt", System.currentTimeMillis());
-                }
-                changed(ctx, CameraTileService.class);
-            }
-            return true;
-        }
         if (path != null && path.startsWith(TEMPLATE_PATH)) {
             int slot;
             try {
@@ -314,26 +280,6 @@ public final class TileStore {
             return true;
         }
         return false;
-    }
-
-    /** Image de la caméra recadrée en carré et réduite, en RGB_565 (moitié moins lourde) */
-    private static Icon loadCamera(Context ctx, Asset asset) {
-        if (asset == null)
-            return null;
-        try (InputStream is = Tasks.await(Wearable.getDataClient(ctx.getApplicationContext())
-                .getFdForAsset(asset), AWAIT_S, TimeUnit.SECONDS).getInputStream()) {
-            Bitmap src = BitmapFactory.decodeStream(is);
-            if (src == null)
-                return null;
-            int side = Math.min(src.getWidth(), src.getHeight());
-            Bitmap square = Bitmap.createBitmap(src, (src.getWidth() - side) / 2,
-                    (src.getHeight() - side) / 2, side, side);
-            Bitmap scaled = Bitmap.createScaledBitmap(square, CAMERA_PX, CAMERA_PX, true);
-            return new Icon(scaled.copy(Bitmap.Config.RGB_565, false));
-        } catch (Exception e) {
-            Log.w(TAG, "Image de la caméra illisible", e);
-            return null;
-        }
     }
 
     private static Icon loadIcon(Context ctx, Asset asset) {
@@ -387,15 +333,14 @@ public final class TileStore {
      * téléphone n'envoie sinon les changements qu'en non urgent, sans réveiller
      * la montre ; la tuile se redessine à la réception
      */
-    static void requestFresh(Context ctx, String kind) {
+    static void requestFresh(Context ctx) {
         synchronized (TileStore.class) {
             long now = System.currentTimeMillis();
-            Long last = lastRefresh.get(kind);
-            if (last != null && now - last < REFRESH_MIN_INTERVAL_MS)
+            if (now - lastRefreshRequest < REFRESH_MIN_INTERVAL_MS)
                 return;
-            lastRefresh.put(kind, now);
+            lastRefreshRequest = now;
         }
-        sendToPhone(ctx.getApplicationContext(), TILES_GET_PATH, kind.getBytes(StandardCharsets.UTF_8), null);
+        sendToPhone(ctx.getApplicationContext(), TILES_GET_PATH, new byte[0], null);
     }
 
     /** + (1) ou − (-1) sur la tuile Thermostat ; attente de la nouvelle consigne */

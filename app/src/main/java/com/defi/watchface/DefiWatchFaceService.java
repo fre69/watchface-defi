@@ -424,10 +424,12 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         private static final float BADGE_ZONE_BOTTOM = 0.56f;
 
         // Vignette ronde de la dernière voiture, à gauche de l'heure (centre x
-        // relatif au centre de l'écran, en fractions de l'écran) : symétrique de la pastille
-        private static final float CAR_DX = -0.322f;
+        // relatif au centre de l'écran, en fractions de l'écran). Agrandie le 12/11/2026
+        // (elle remplace la tuile Caméra) : le plus grand cercle entre l'anneau des
+        // calories à gauche et l'heure à droite ; elle n'est plus symétrique de la pastille
+        private static final float CAR_DX = -0.300f;
         private static final float CAR_Y = 0.452f;
-        private static final float CAR_RADIUS = 0.082f;
+        private static final float CAR_RADIUS = 0.095f;
         private static final int COL_CAR_BORDER = 0xFFD0D0D0;
         /** Durée d'affichage de la photo agrandie, sauf appui plus tôt */
         private static final long CAR_VIEW_MS = 30_000L;

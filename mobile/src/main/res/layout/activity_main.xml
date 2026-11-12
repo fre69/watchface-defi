@@ -85,7 +85,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Raccourcis : une entité par ligne, nom court facultatif après « | » (7 au plus)"
+            android:text="Raccourcis : une entité par ligne, nom court facultatif après « | » (9 au plus)"
             android:textSize="14sp" />
 
         <EditText
@@ -150,7 +150,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="Thermostat (climate) et caméra (camera)"
+            android:text="Thermostat (climate)"
             android:textSize="14sp" />
 
         <EditText
@@ -158,15 +158,6 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:hint="climate.cuisine"
-            android:inputType="textNoSuggestions"
-            android:fontFamily="monospace"
-            android:importantForAutofill="no" />
-
-        <EditText
-            android:id="@+id/tile_camera"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="camera.chemin_last_motion"
             android:inputType="textNoSuggestions"
             android:fontFamily="monospace"
             android:importantForAutofill="no" />

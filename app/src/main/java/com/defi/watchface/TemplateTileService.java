@@ -92,7 +92,7 @@ public abstract class TemplateTileService extends TileService {
     @Override
     protected void onTileEnterEvent(@NonNull EventBuilders.TileEnterEvent event) {
         Log.d("DefiTiles", "Tuile affichée : " + getClass().getSimpleName());
-        TileStore.requestFresh(this, "");
+        TileStore.requestFresh(this);
     }
 
     @NonNull

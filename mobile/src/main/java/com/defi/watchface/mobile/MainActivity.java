@@ -57,23 +57,20 @@ public class MainActivity extends AppCompatActivity {
             HaLink.get(this).restart();
         });
 
-        // --- Tuiles de la montre (Raccourcis, Modèle 1 à 4, Thermostat, Caméra) ---
+        // --- Tuiles de la montre (Raccourcis, Modèle 1 à 4, Thermostat) ---
         EditText tileEntities = findViewById(R.id.tile_entities);
         EditText[] templates = {
                 findViewById(R.id.tile_template_1), findViewById(R.id.tile_template_2),
                 findViewById(R.id.tile_template_3), findViewById(R.id.tile_template_4) };
         EditText tileClimate = findViewById(R.id.tile_climate);
-        EditText tileCamera = findViewById(R.id.tile_camera);
         tileEntities.setText(prefs.getString(HaLink.PREF_TILE_ENTITIES, ""));
         tileClimate.setText(prefs.getString(HaLink.PREF_TILE_CLIMATE, ""));
-        tileCamera.setText(prefs.getString(HaLink.PREF_TILE_CAMERA, ""));
         for (int i = 0; i < templates.length; i++)
             templates[i].setText(prefs.getString(HaLink.PREF_TILE_TEMPLATE + (i + 1), ""));
         findViewById(R.id.btn_tiles_save).setOnClickListener(v -> {
             SharedPreferences.Editor ed = prefs.edit()
                     .putString(HaLink.PREF_TILE_ENTITIES, tileEntities.getText().toString().trim())
-                    .putString(HaLink.PREF_TILE_CLIMATE, tileClimate.getText().toString().trim())
-                    .putString(HaLink.PREF_TILE_CAMERA, tileCamera.getText().toString().trim());
+                    .putString(HaLink.PREF_TILE_CLIMATE, tileClimate.getText().toString().trim());
             for (int i = 0; i < templates.length; i++)
                 ed.putString(HaLink.PREF_TILE_TEMPLATE + (i + 1), templates[i].getText().toString().trim());
             ed.apply();

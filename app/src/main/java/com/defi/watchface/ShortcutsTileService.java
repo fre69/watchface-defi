@@ -26,8 +26,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Tuile Raccourcis : jusqu'à 7 entités Home Assistant avec leur état réel
- * (allumé en couleur), plus un bouton micro pour Assist, en rangées 2-3-3
+ * Tuile Raccourcis : jusqu'à 9 entités Home Assistant avec leur état réel
+ * (allumé en couleur), plus un bouton micro pour Assist, en rangées 3-3-3 ou 3-4-3
+ * (cercles plus petits au-delà de 8)
  * comme la tuile de l'appli Home Assistant. Un appui bascule
  * l'entité ; la tuile attend le nouvel état (au plus 2,5 s) avant de se
  * redessiner, et cercle de bleu une entité dont l'appui n'est pas confirmé.
@@ -35,9 +36,13 @@ import java.util.Map;
 public class ShortcutsTileService extends TileService {
 
     private static final String CLICK_PREFIX = "e:";
-    private static final int MAX_ENTITIES = 7;
+    private static final int MAX_ENTITIES = 9;
+    /** Cercles de 50 dp jusqu'à 8 boutons, 44 dp au-delà (rangée de 4 au milieu) */
     private static final int CIRCLE_DP = 50;
+    private static final int CIRCLE_SMALL_DP = 44;
     private static final int GAP_DP = 5;
+    /** Taille des cercles de la tuile en cours de construction */
+    private int circleDp = CIRCLE_DP;
 
     private static final int C_ACTIVE = 0xFFFFC107;
     private static final int C_IDLE = 0xFF2A2A35;
@@ -67,7 +72,7 @@ public class ShortcutsTileService extends TileService {
     @Override
     protected void onTileEnterEvent(@NonNull EventBuilders.TileEnterEvent event) {
         Log.d("DefiTiles", "Tuile affichée : " + getClass().getSimpleName());
-        TileStore.requestFresh(this, "");
+        TileStore.requestFresh(this);
     }
 
     @NonNull
@@ -106,6 +111,8 @@ public class ShortcutsTileService extends TileService {
         if (PhoneLink.isDown())
             col.addContent(text("📵 téléphone injoignable", 12, 0xFFFF4466, 1))
                     .addContent(spacer(6));
+        int count = Math.min(list.size(), MAX_ENTITIES) + 1;
+        circleDp = count > 8 ? CIRCLE_SMALL_DP : CIRCLE_DP;
         List<LayoutElementBuilders.LayoutElement> items = new ArrayList<>();
         for (int i = 0; i < Math.min(list.size(), MAX_ENTITIES); i++)
             items.add(button(list.get(i)));
@@ -141,6 +148,8 @@ public class ShortcutsTileService extends TileService {
     /** Nombre de cercles par rangée pour n cercles (micro compris) */
     private static int[] rowSizes(int n) {
         switch (n) {
+            case 10: return new int[] { 3, 4, 3 };
+            case 9: return new int[] { 3, 3, 3 };
             case 8: return new int[] { 2, 3, 3 };
             case 7: return new int[] { 2, 3, 2 };
             case 6: return new int[] { 3, 3 };
@@ -166,7 +175,7 @@ public class ShortcutsTileService extends TileService {
         ModifiersBuilders.Modifiers.Builder mods = new ModifiersBuilders.Modifiers.Builder()
                 .setBackground(new ModifiersBuilders.Background.Builder()
                         .setColor(argb(bg))
-                        .setCorner(new ModifiersBuilders.Corner.Builder().setRadius(dp(CIRCLE_DP / 2f)).build())
+                        .setCorner(new ModifiersBuilders.Corner.Builder().setRadius(dp(circleDp / 2f)).build())
                         .build())
                 .setClickable(new ModifiersBuilders.Clickable.Builder()
                         .setId(CLICK_PREFIX + e.id)
@@ -184,17 +193,17 @@ public class ShortcutsTileService extends TileService {
             content = new LayoutElementBuilders.Column.Builder()
                     .addContent(new LayoutElementBuilders.Image.Builder()
                             .setResourceId(TileStore.iconResId(e.iconKey))
-                            .setWidth(dp(24))
-                            .setHeight(dp(24))
+                            .setWidth(dp(circleDp >= CIRCLE_DP ? 24 : 21))
+                            .setHeight(dp(circleDp >= CIRCLE_DP ? 24 : 21))
                             .build())
-                    .addContent(text(e.name, 8, fg, 1))
+                    .addContent(text(e.name, circleDp >= CIRCLE_DP ? 8 : 7, fg, 1))
                     .build();
         } else {
             content = text(e.name, 10, fg, 2);
         }
         return new LayoutElementBuilders.Box.Builder()
-                .setWidth(dp(CIRCLE_DP))
-                .setHeight(dp(CIRCLE_DP))
+                .setWidth(dp(circleDp))
+                .setHeight(dp(circleDp))
                 .setModifiers(mods.build())
                 .addContent(content)
                 .build();
@@ -202,12 +211,12 @@ public class ShortcutsTileService extends TileService {
 
     private LayoutElementBuilders.LayoutElement micButton() {
         return new LayoutElementBuilders.Box.Builder()
-                .setWidth(dp(CIRCLE_DP))
-                .setHeight(dp(CIRCLE_DP))
+                .setWidth(dp(circleDp))
+                .setHeight(dp(circleDp))
                 .setModifiers(new ModifiersBuilders.Modifiers.Builder()
                         .setBackground(new ModifiersBuilders.Background.Builder()
                                 .setColor(argb(0xFF3A2A55))
-                                .setCorner(new ModifiersBuilders.Corner.Builder().setRadius(dp(CIRCLE_DP / 2f)).build())
+                                .setCorner(new ModifiersBuilders.Corner.Builder().setRadius(dp(circleDp / 2f)).build())
                                 .build())
                         .setClickable(new ModifiersBuilders.Clickable.Builder()
                                 .setId("assist")
