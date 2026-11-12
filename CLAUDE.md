@@ -129,7 +129,8 @@ que le système garde en vie, porte le lien ; reconnexion seule (coupure, résea
 L'appli HA officielle de la montre ne sert plus : ses notifications ne marchent pas (OnePlus coupe son
 processus écran éteint) et elle parle à HA par le Wi-Fi de la montre. Ses tuiles et son Assist sont
 repris ici, sur le même principe que le reste : **le téléphone parle à HA, la montre jamais**.
-Le fork de l'appli HA (`C:\PROJETS\wearOS-ha`) ne sert plus qu'à une éventuelle PR chez HA.
+Un fork de l'appli HA a été essayé puis supprimé le 12/11/2026 : sa connexion manuelle depuis la
+montre était cassée par PKCE (`Code verifier required`, correctif home-assistant/android#7775).
 
 | Tuile (carrousel) | Service | Données (téléphone → montre) | Commande (montre → téléphone) |
 |---|---|---|---|
