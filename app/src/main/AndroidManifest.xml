@@ -10,6 +10,9 @@
     <uses-permission android:name="android.permission.BODY_SENSORS" />
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
 
+    <!-- Assist : écoute dans la page (SpeechRecognizer), envoi sans écran de confirmation -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
     <!-- Allumage de l'écran à l'arrivée d'une notification (ScreenWaker) -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
@@ -18,6 +21,11 @@
         <package android:name="com.heytap.wearable.health" />
         <package android:name="com.heytap.wearable.weather" />
         <package android:name="com.google.android.gms" />
+        <!-- Service de reconnaissance vocale (Android 11+ : sans cette déclaration,
+             SpeechRecognizer ne le voit pas) -->
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
     </queries>
 
     <application
@@ -56,6 +64,128 @@
             android:taskAffinity=""
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
+        <!-- Assist : dictée vers Home Assistant, par le téléphone -->
+        <activity
+            android:name=".AssistActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:icon="@drawable/ic_assist"
+            android:roundIcon="@drawable/ic_assist"
+            android:label="Assist HA"
+            android:taskAffinity=".assist"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- Assistant de la montre : attribuable au bouton (comme l'appli Home Assistant) -->
+            <intent-filter>
+                <action android:name="android.intent.action.ASSIST" />
+                <action android:name="android.intent.action.VOICE_ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- Tuiles Home Assistant : état poussé par le téléphone, aucune requête de la montre -->
+        <service
+            android:name=".ShortcutsTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_launcher"
+            android:label="Raccourcis HA"
+            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
+            <intent-filter>
+                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
+            </intent-filter>
+            <meta-data
+                android:name="androidx.wear.tiles.PREVIEW"
+                android:resource="@drawable/ic_launcher" />
+        </service>
+
+        <service
+            android:name=".TemplateTileService$Slot1"
+            android:exported="true"
+            android:icon="@drawable/ic_launcher"
+            android:label="Modèle HA 1"
+            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
+            <intent-filter>
+                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
+            </intent-filter>
+            <meta-data
+                android:name="androidx.wear.tiles.PREVIEW"
+                android:resource="@drawable/ic_launcher" />
+        </service>
+
+        <service
+            android:name=".TemplateTileService$Slot2"
+            android:exported="true"
+            android:icon="@drawable/ic_launcher"
+            android:label="Modèle HA 2"
+            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
+            <intent-filter>
+                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
+            </intent-filter>
+            <meta-data
+                android:name="androidx.wear.tiles.PREVIEW"
+                android:resource="@drawable/ic_launcher" />
+        </service>
+
+        <service
+            android:name=".TemplateTileService$Slot3"
+            android:exported="true"
+            android:icon="@drawable/ic_launcher"
+            android:label="Modèle HA 3"
+            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
+            <intent-filter>
+                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
+            </intent-filter>
+            <meta-data
+                android:name="androidx.wear.tiles.PREVIEW"
+                android:resource="@drawable/ic_launcher" />
+        </service>
+
+        <service
+            android:name=".TemplateTileService$Slot4"
+            android:exported="true"
+            android:icon="@drawable/ic_launcher"
+            android:label="Modèle HA 4"
+            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
+            <intent-filter>
+                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
+            </intent-filter>
+            <meta-data
+                android:name="androidx.wear.tiles.PREVIEW"
+                android:resource="@drawable/ic_launcher" />
+        </service>
+
+        <service
+            android:name=".ThermostatTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_launcher"
+            android:label="Thermostat HA"
+            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
+            <intent-filter>
+                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
+            </intent-filter>
+            <meta-data
+                android:name="androidx.wear.tiles.PREVIEW"
+                android:resource="@drawable/ic_launcher" />
+        </service>
+
+        <service
+            android:name=".CameraTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_launcher"
+            android:label="Caméra HA"
+            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
+            <intent-filter>
+                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
+            </intent-filter>
+            <meta-data
+                android:name="androidx.wear.tiles.PREVIEW"
+                android:resource="@drawable/ic_launcher" />
+        </service>
+
         <service
             android:name=".DefiNotificationListenerService"
             android:exported="true"
@@ -83,13 +213,17 @@
                     android:host="*"
                     android:pathPrefix="/phone" />
             </intent-filter>
-            <!-- Accusé du téléphone pour une réponse rapide -->
+            <!-- Accusés du téléphone : réponse rapide, tuile Raccourcis, Assist -->
             <intent-filter>
                 <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
                 <data
                     android:scheme="wear"
                     android:host="*"
                     android:pathPrefix="/reply" />
+                <data
+                    android:scheme="wear"
+                    android:host="*"
+                    android:pathPrefix="/ha/" />
             </intent-filter>
             <!-- Téléphone joignable ou non (PhoneLink) -->
             <intent-filter>

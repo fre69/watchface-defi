@@ -73,6 +73,111 @@
             android:textSize="16sp"
             android:textAlignment="center" />
 
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Tuiles de la montre"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:layout_marginTop="40dp"
+            android:layout_marginBottom="12dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Raccourcis : une entité par ligne, nom court facultatif après « | » (7 au plus)"
+            android:textSize="14sp" />
+
+        <EditText
+            android:id="@+id/tile_entities"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="top"
+            android:hint="light.salon | Salon"
+            android:inputType="textMultiLine|textNoSuggestions"
+            android:minLines="4"
+            android:fontFamily="monospace"
+            android:importantForAutofill="no" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="Tuiles Modèle 1 à 4 : un modèle (template), ou un capteur dont l'attribut « texte » est affiché"
+            android:textSize="14sp" />
+
+        <EditText
+            android:id="@+id/tile_template_1"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="top"
+            android:hint="Modèle 1 : sensor.montre_meteo ou {{ … }}"
+            android:inputType="textMultiLine|textNoSuggestions"
+            android:fontFamily="monospace"
+            android:importantForAutofill="no" />
+
+        <EditText
+            android:id="@+id/tile_template_2"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="top"
+            android:hint="Modèle 2 : sensor.montre_meteo ou {{ … }}"
+            android:inputType="textMultiLine|textNoSuggestions"
+            android:fontFamily="monospace"
+            android:importantForAutofill="no" />
+
+        <EditText
+            android:id="@+id/tile_template_3"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="top"
+            android:hint="Modèle 3 : sensor.montre_meteo ou {{ … }}"
+            android:inputType="textMultiLine|textNoSuggestions"
+            android:fontFamily="monospace"
+            android:importantForAutofill="no" />
+
+        <EditText
+            android:id="@+id/tile_template_4"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="top"
+            android:hint="Modèle 4 : sensor.montre_meteo ou {{ … }}"
+            android:inputType="textMultiLine|textNoSuggestions"
+            android:fontFamily="monospace"
+            android:importantForAutofill="no" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="Thermostat (climate) et caméra (camera)"
+            android:textSize="14sp" />
+
+        <EditText
+            android:id="@+id/tile_climate"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="climate.cuisine"
+            android:inputType="textNoSuggestions"
+            android:fontFamily="monospace"
+            android:importantForAutofill="no" />
+
+        <EditText
+            android:id="@+id/tile_camera"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="camera.chemin_last_motion"
+            android:inputType="textNoSuggestions"
+            android:fontFamily="monospace"
+            android:importantForAutofill="no" />
+
+        <Button
+            android:id="@+id/btn_tiles_save"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Enregistrer les tuiles" />
+
         <Button
             android:id="@+id/btn_battery"
             android:layout_width="wrap_content"

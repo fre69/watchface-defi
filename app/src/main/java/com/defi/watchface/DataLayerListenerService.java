@@ -17,6 +17,7 @@ import com.google.android.gms.wearable.Wearable;
 import com.google.android.gms.wearable.WearableListenerService;
 
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 
 public class DataLayerListenerService extends WearableListenerService {
 
@@ -24,13 +25,20 @@ public class DataLayerListenerService extends WearableListenerService {
     /** Une notification du téléphone par élément : /notification/<clé encodée> */
     private static final String NOTIF_PREFIX = "/notification/";
 
-    /** Accusé du téléphone pour une réponse rapide */
+    /** Accusés du téléphone : réponse rapide, appui sur la tuile Raccourcis, réponse d'Assist */
     @Override
     public void onMessageReceived(MessageEvent event) {
-        if ((ReplySender.REPLY_PATH + "/ok").equals(event.getPath()))
+        String path = event.getPath();
+        if ((ReplySender.REPLY_PATH + "/ok").equals(path))
             NotificationHolder.replyResult(true);
-        else if ((ReplySender.REPLY_PATH + "/fail").equals(event.getPath()))
+        else if ((ReplySender.REPLY_PATH + "/fail").equals(path))
             NotificationHolder.replyResult(false);
+        else if ((TileStore.ACTION_PATH + "/fail").equals(path))
+            TileStore.actionFailed(this, new String(event.getData(), StandardCharsets.UTF_8));
+        else if ((TileStore.CLIMATE_PATH + "/fail").equals(path))
+            TileStore.climateFailed(this);
+        else if (AssistActivity.REPLY_PATH.equals(path))
+            AssistActivity.onReply(event.getData());
     }
 
     /** Téléphone joignable ou non : témoin de lien coupé sur le cadran */
@@ -57,6 +65,8 @@ public class DataLayerListenerService extends WearableListenerService {
                 continue;
             }
             if (event.getType() != DataEvent.TYPE_CHANGED) continue;
+            // Tuiles Raccourcis et Modèle : redessinées sans allumer l'écran
+            if (TileStore.apply(this, event.getDataItem())) continue;
             // Météo et voiture de Home Assistant : affichées sans allumer l'écran
             if (HomeData.apply(this, event.getDataItem())) continue;
             // Battement de cœur du téléphone : témoin de lien coupé

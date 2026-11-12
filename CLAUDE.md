@@ -2,7 +2,10 @@
 
 ## Contexte
 Cadran personnalisé "myPersonnalCadran" pour **OnePlus Watch 2** (Wear OS 5 / Android 14 depuis la
-mise à jour OnePlus — le projet a démarré sous Wear OS 4 —, écran rond 466x466px).
+mise à jour OnePlus — le projet a démarré sous Wear OS 4 —, écran rond 466x466px, 320 dpi = 233 dp).
+Deux modules : `app` (montre : cadran, tuiles Home Assistant, Assist) et `mobile` (téléphone :
+relais des notifications, lien avec Home Assistant, réglages). Le téléphone fait tout le travail
+réseau ; la montre ne parle jamais à Home Assistant. Vue d'ensemble pour un humain : `README.md`.
 
 ## Architecture
 
@@ -115,9 +118,69 @@ que le système garde en vie, porte le lien ; reconnexion seule (coupure, résea
   changement d'un agenda, de jour, et toutes les 15 min ; envoyé seulement s'il change. Le cadran
   affiche, à la place de l'ancienne ligne FC, le rendez-vous en cours ou le prochain
   (« 16:30 Kiné »), sinon l'événement « journée entière » du jour ; la FC est montée tout en haut
-- Mêmes règles que les tuiles HA Wear OS (`sensor.montre_meteo`, `sensor.montre_bus_chemin` dans
-  `template.yaml` de HA) : couleurs de vigilance `#ffd600`/`#ff9100`/`#ff1744`, ordre des phénomènes.
+- Mêmes règles que les capteurs `sensor.montre_meteo` et `sensor.montre_bus_chemin` de
+  `template.yaml` (HA), affichés par les tuiles Modèle : couleurs de vigilance
+  `#ffd600`/`#ff9100`/`#ff1744`, ordre des phénomènes.
 - La DataLayer garde le dernier élément de chaque chemin : `HomeData.load()` le relit au démarrage du cadran.
+
+### Tuiles et Assist Home Assistant (remplacent l'appli HA de la montre, 12/11/2026)
+L'appli HA officielle de la montre ne sert plus : ses notifications ne marchent pas (OnePlus coupe son
+processus écran éteint) et elle parle à HA par le Wi-Fi de la montre. Ses tuiles et son Assist sont
+repris ici, sur le même principe que le reste : **le téléphone parle à HA, la montre jamais**.
+Le fork de l'appli HA (`C:\PROJETS\wearOS-ha`) ne sert plus qu'à une éventuelle PR chez HA.
+
+| Tuile (carrousel) | Service | Données (téléphone → montre) | Commande (montre → téléphone) |
+|---|---|---|---|
+| Raccourcis HA (7 entités + 🎤) | `ShortcutsTileService` | `/ha/tiles` : état, nom, icône | `/ha/action` « entity_id », échec `/ha/action/fail` |
+| Modèle HA 1 à 4 | `TemplateTileService$Slot1…4` | `/ha/template/1…4` | — |
+| Thermostat HA | `ThermostatTileService` | `/ha/thermostat` | `/ha/climate` « + » / « - », échec `/ha/climate/fail` |
+| Caméra HA | `CameraTileService` | `/ha/camera` (JPEG 320 px) | — |
+| Assist (appli + 🎤) | `AssistActivity` | réponse `/ha/assist/reply` | `/ha/assist` « texte » |
+
+- **Réglages dans l'appli du téléphone** (section « Tuiles de la montre ») : entités des Raccourcis
+  (`entity_id | nom court`, une par ligne), 4 modèles (Jinja, ou un simple `sensor.x` dont l'attribut
+  `texte` est affiché : les capteurs `sensor.montre_*` de `template.yaml`), le `climate` et la `camera`.
+- **Rafraîchissement** : abonnements HA (`subscribe_entities`, `render_template` qui ne renvoie que
+  quand le résultat change). Les changements partent **non urgents** (aucun réveil de la montre,
+  livrés quand elle est éveillée). Quand une tuile s'affiche (`onTileEnterEvent`, au plus 1 fois / 5 s),
+  la montre envoie `/ha/tiles/get` et le téléphone renvoie l'état en urgent (≈ 0,6 s mesuré), puis reste
+  en direct 1 min ; 10 s après un appui aussi. La Caméra (« camera » en charge utile) n'est téléchargée
+  qu'à l'affichage : un instantané de caméra n'a pas d'état qui change.
+- **Appui** : la tuile attend le nouvel état (2,5 s au plus) avant de se redessiner ; contour bleu =
+  appui pas encore confirmé, rouge = refusé. Bascule comme l'appli HA (`lock`/`unlock`,
+  `cover.toggle`, `turn_on` des scènes et scripts, `press` des boutons, sinon `homeassistant.toggle`).
+  Thermostat : appuis rapprochés cumulés depuis la consigne demandée (`target_temp_step`, bornes min/max).
+- **Icônes** : attribut `icon` de l'entité (sinon icône par défaut du domaine, `MdiIcons.defaultIcon`),
+  dessinée sur le téléphone avec la police MDI 7.4.47 (`mobile/src/main/assets/mdi.ttf`, Apache 2.0,
+  table `mdi.txt` tirée du CSS de `@mdi/font`) dans la couleur de l'état, envoyée en PNG ; la montre
+  la passe en ARGB_8888 brut pour la tuile.
+- **Modèles** : HTML restreint des tuiles HA (`<b>`, `<big>`, `<small>`, `<font color>`, `<br>`) rendu en
+  `Spannable` (`TemplateTileService.html`), aux tailles de l'appli HA : texte normal à la taille par
+  défaut des tuiles (aucune imposée), `<big>` 20 sp, `<small>` 12,8 sp ; retours à la ligne gardés ;
+  marges latérales étroites (une ligne comme « 274 dans ~16 min (17:37) » y tient).
+- **Assist** : dictée du système (`RecognizerIntent`, Gboard en fr-FR) ; côté téléphone,
+  `assist_pipeline/run` (étape `intent` seule) sur le **pipeline préféré** de HA, comme l'appli HA :
+  son agent (« Assistant Maison » : commandes locales d'abord, puis Claude), sa langue. ⚠️ Pas
+  `conversation/process` sans `agent_id` : il prend l'agent intégré de HA (phrases types, sans IA),
+  qui ne suit pas le fil (« éteins-le » → « je ne connais pas cet appareil »). Réponse attendue 30 s. Dialogue : `conversation_id` gardé 5 min par le téléphone, historique gardé autant à
+  l'écran ; écoute relancée seule quand HA attend une suite (`continue_conversation`). Boutons
+  toujours visibles en bas : 🎤 écoute **dans la page** (`SpeechRecognizer`, permission
+  `RECORD_AUDIO`, `<queries>` sur `android.speech.RecognitionService`), texte affiché pendant qu'on
+  parle et envoyé dès qu'on se tait, sans l'écran de Gboard et son ✓ ; ✎ saisie du système
+  (dictée ou clavier, modifiable avant envoi) pour corriger ; ↺ nouvelle conversation (écran vidé,
+  `/ha/assist/new` : le téléphone oublie le `conversation_id`).
+  `singleTask` : relancer Assist (tuile, bouton) reprend la page ouverte (`onNewIntent` → dictée)
+  au lieu d'en empiler une nouvelle. Déclaré `ASSIST` / `VOICE_ASSIST` : choisissable comme
+  assistant de la montre (bouton).
+- Téléphone éteint ou sans réseau : les tuiles gardent la dernière valeur et affichent « 📵 ».
+- ⚠️ **Toute lecture de la DataLayer a un délai** (`Tasks.await(…, 5 s)`) : les tuiles partagent un seul
+  fil (`TileStore.BACKGROUND`), et une pièce jointe pas encore arrivée (l'image de la caméra) les
+  bloquait toutes, sans erreur. L'image de la caméra n'est pas relue au démarrage.
+- ⚠️ **Après une réinstallation**, le système garde un moment des liaisons mortes vers l'ancien
+  processus (`dumpsys activity services` : `ConnectionRecord … DEAD`) : une tuile reste sur l'icône
+  d'attente (« no valid tile data »). Elle revient d'elle-même en repassant dessus ; ce n'est pas un
+  défaut de la tuile. `DefiTiles` journalise chaque tuile fournie ou en échec (`TileStore.logged`).
+- Retirer une tuile sans la montre : même commande que l'ajout, `--es operation remove-tile`.
 
 ### Allumage de l'écran — ce que fait vraiment le firmware (vérifié le 2026-10-13, Wear OS 5)
 Lu dans le code décompilé (`wear-services.jar`, `services.jar`, `HeyClockworkSysUi.apk`) et mesuré :
@@ -149,15 +212,22 @@ Lu dans le code décompilé (`wear-services.jar`, `services.jar`, `HeyClockworkS
 - `app/src/main/java/com/defi/watchface/HomeData.java` — Météo de la maison et dernière voiture reçues de HA
 - `app/src/main/java/com/defi/watchface/PhoneLink.java` — Témoin de lien téléphone coupé
 - `app/src/main/java/com/defi/watchface/ReplySender.java` / `ReplyActivity.java` — Réponses rapides depuis la bulle
+- `app/src/main/java/com/defi/watchface/TileStore.java` — Données des tuiles HA, appuis en attente, demande d'état frais
+- `app/src/main/java/com/defi/watchface/ShortcutsTileService.java`, `TemplateTileService.java`,
+  `ThermostatTileService.java`, `CameraTileService.java` — Tuiles Home Assistant
+- `app/src/main/java/com/defi/watchface/AssistActivity.java` — Dialogue avec Assist (appli « Assist HA »,
+  icône `res/drawable/ic_assist.xml` : rond bleu HA, `mdi:microphone-message`)
 - `app/src/main/AndroidManifest.xml` — Déclaration des services
-- `app/build.gradle` — Dépendances (watchface, watchface-guava, guava, play-services-wearable)
+- `app/build.gradle` — Dépendances (watchface, watchface-guava, guava, play-services-wearable, tiles, protolayout)
 
 **Module `mobile` (téléphone)** :
 - `mobile/src/main/java/com/defi/watchface/mobile/PhoneNotificationListenerService.java` — Capture notifs + envoi DataLayer
 - `mobile/src/main/java/com/defi/watchface/mobile/HaLink.java` — WebSocket Home Assistant + envoi DataLayer
 - `mobile/src/main/java/com/defi/watchface/mobile/HeartbeatReceiver.java` — Battement de cœur vers la montre
 - `mobile/src/main/java/com/defi/watchface/mobile/ReplyListenerService.java` — Exécution des réponses rapides
-- `mobile/src/main/java/com/defi/watchface/mobile/MainActivity.java` — Activation du listener, URL/jeton HA, batterie
+- `mobile/src/main/java/com/defi/watchface/mobile/HaCommandService.java` — Commandes des tuiles et d'Assist
+- `mobile/src/main/java/com/defi/watchface/mobile/MdiIcons.java` — Icônes MDI des Raccourcis
+- `mobile/src/main/java/com/defi/watchface/mobile/MainActivity.java` — Activation du listener, URL/jeton HA, réglage des tuiles, batterie
 - `mobile/src/main/AndroidManifest.xml`
 - `mobile/build.gradle`
 
@@ -181,18 +251,21 @@ Lu dans le code décompilé (`wear-services.jar`, `services.jar`, `HeyClockworkS
 ## Build & Deploy
 
 ```bash
-# Build les deux modules
-gradlew.bat :app:assembleDebug :mobile:assembleDebug
+# Build les deux modules : gradlew.bat (le script shell gradlew échoue sous Git Bash :
+# « impossible de trouver la classe principale "-Xmx64m" »). Depuis PowerShell :
+.\gradlew.bat :app:assembleDebug :mobile:assembleDebug
 
-# Ou via le Gradle caché si gradlew ne marche pas
-"C:/Users/frevi/.gradle/wrapper/dists/gradle-8.4-bin/1w5dpkrfk8irigvoxmyhowfim/gradle-8.4/bin/gradle" --project-dir "c:/Users/frevi/Desktop/Mes projets/watchface-defi" :app:assembleDebug :mobile:assembleDebug
-
-# Install montre (USB connecté)
-adb uninstall com.defi.watchface.distance
-adb install app/build/outputs/apk/debug/app-debug.apk
+# Install montre (USB sur le socle ou adb Wi-Fi) : -r garde les permissions accordées
+# (même clé de débogage du poste). Désinstaller seulement si la signature diffère.
+adb -s <montre> install -r app/build/outputs/apk/debug/app-debug.apk
 
 # Install téléphone (USB ou WiFi debug)
-adb -s <phone-serial> install mobile/build/outputs/apk/debug/mobile-debug.apk
+adb -s <phone-serial> install -r mobile/build/outputs/apk/debug/mobile-debug.apk
+
+# Ajouter une tuile au carrousel sans passer par la montre (elle se place en tête)
+adb shell am broadcast -a com.google.android.wearable.app.DEBUG_SURFACE --es operation add-tile \
+  --ecn component 'com.defi.watchface.distance/com.defi.watchface.ShortcutsTileService'
+# (TemplateTileService\$Slot1…4, ThermostatTileService, CameraTileService)
 
 # Screenshot montre
 adb exec-out screencap -p > screenshot.png
@@ -201,12 +274,7 @@ adb exec-out screencap -p > screenshot.png
 ## Commandes ADB (non disponibles dans les menus de la montre)
 
 ```bash
-# --- DEPLOY ---
-adb uninstall com.defi.watchface.distance
-adb install app/build/outputs/apk/debug/app-debug.apk
-adb exec-out screencap -p > screenshot.png
-
-# --- PERMISSIONS (à accorder après chaque install) ---
+# --- PERMISSIONS (après une installation neuve ; install -r les garde) ---
 # Notification listener (lecture des notifications pour le cadran)
 adb shell cmd notification allow_listener com.defi.watchface.distance/com.defi.watchface.DefiNotificationListenerService
 
@@ -238,6 +306,9 @@ adb shell dumpsys bm.manager -ms
 - **Java** : 17 (Eclipse Adoptium)
 - **Gradle** : 8.4
 - **AGP** : 8.2.0
+- **Tuiles** : `androidx.wear.tiles` 1.4.1, `androidx.wear.protolayout` 1.2.1 (images inline
+  ARGB_8888 / RGB_565, `onTileEnterEvent`)
+- **Téléphone** : minSdk 28, OkHttp 4.12 (WebSocket HA)
 
 ## Problèmes résolus
 - **Calories + Météo** : Résolu en ajoutant `<queries>` (visibilité packages Android 11+)
@@ -249,6 +320,10 @@ adb shell dumpsys bm.manager -ms
 - **Allumage de l'écran sans lever de poignet** : `ScreenWaker` (WakeLock `ACQUIRE_CAUSES_WAKEUP`)
   à l'arrivée d'une notification. L'ancien constat « WakeLock inopérant, AP coupé » (mars 2026,
   Wear OS 4) est faux sur Wear OS 5 : cf. « Allumage de l'écran » plus haut.
+- **Appli Home Assistant de la montre** (12/11/2026) : notifications perdues (processus coupé écran
+  éteint) et Wi-Fi de la montre allumé pour chaque échange. Remplacée par les tuiles et Assist de ce
+  projet ; ses tuiles sont retirées du carrousel. Un message urgent de la DataLayer réveille la
+  montre en veille Android : les tuiles n'en reçoivent que quand on les regarde.
 
 ## Problèmes connus
 - **Sommeil/Stress** : Pas de ComplicationProvider dédié trouvé sur la montre. `DailyActivityComplicationService` renvoie les pas au lieu de l'activité complète.

@@ -44,4 +44,8 @@ dependencies {
 
     // Saisie du système (dictée, clavier) pour une réponse libre depuis la bulle
     implementation 'androidx.wear:wear-input:1.1.0'
+
+    // Tuiles Raccourcis et Modèle (Home Assistant par le téléphone)
+    implementation 'androidx.wear.tiles:tiles:1.4.1'
+    implementation 'androidx.wear.protolayout:protolayout:1.2.1'
 }
