@@ -156,8 +156,13 @@ montre était cassée par PKCE (`Code verifier required`, correctif home-assista
   table `mdi.txt` tirée du CSS de `@mdi/font`) dans la couleur de l'état, envoyée en PNG ; la montre
   la passe en ARGB_8888 brut pour la tuile.
 - **Modèles** : HTML restreint des tuiles HA (`<b>`, `<big>`, `<small>`, `<font color>`, `<br>`) rendu en
-  `Spannable` (`TemplateTileService.html`), aux tailles de l'appli HA : texte normal à la taille par
-  défaut des tuiles (aucune imposée), `<big>` 20 sp, `<small>` 12,8 sp ; retours à la ligne gardés ;
+  `Spannable` (`TemplateTileService.html`) : texte normal à la taille par défaut des tuiles (aucune
+  imposée, ≈ 18 sp mesuré), `<big>` 20 sp comme l'appli HA ; `<small>` 16 sp, plus grand que dans
+  l'appli HA (12,8 sp, illisible au poignet). Une ligne `<small>` doit rester courte (≈ 22 caractères)
+  pour tenir dans le rond : le modèle la coupe par `<br>` (bus et délai de `sensor.montre_ecole`).
+  `<p>` (ajout propre à la montre) sépare deux blocs d'un petit interligne : une ligne d'espace
+  insécable en 8 sp, retour qui termine la ligne précédente compris (dans la police normale, il
+  agrandirait cette ligne). Retours à la ligne gardés ;
   marges latérales étroites (une ligne comme « 274 dans ~16 min (17:37) » y tient).
 - **Assist** : dictée du système (`RecognizerIntent`, Gboard en fr-FR) ; côté téléphone,
   `assist_pipeline/run` (étape `intent` seule) sur le **pipeline préféré** de HA, comme l'appli HA :

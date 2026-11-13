@@ -31,18 +31,24 @@ import java.util.regex.Pattern;
  * Tuiles Modèle 1 à 4 : texte d'un modèle Home Assistant, calculé par le
  * serveur et poussé par le téléphone chaque fois que le résultat change
  * (render_template). Le texte peut porter le HTML restreint des tuiles de
- * l'appli Home Assistant : <b>, <big>, <small>, <font color>, <br>.
+ * l'appli Home Assistant : <b>, <big>, <small>, <font color>, <br>, et <p> qui sépare
+ * des paragraphes d'un petit interligne.
  */
 public abstract class TemplateTileService extends TileService {
 
     private static final String RESOURCES_VERSION = "1";
     /**
-     * Tailles de l'appli Home Assistant : texte normal à la taille par défaut des tuiles
-     * (aucune taille imposée), <big> et <small> = 1,25 et 0,8 × 16 sp (RelativeSizeSpan)
+     * Texte normal à la taille par défaut des tuiles (aucune taille imposée, ≈ 18 sp mesuré),
+     * <big> comme l'appli Home Assistant (1,25 × 16 sp). <small> plus grand que chez elle
+     * (0,8 × 16 = 12,8 sp, illisible au poignet) : 16 sp, un cran sous le texte normal.
+     * Une ligne <small> doit rester courte (≈ 22 caractères) pour tenir dans le rond :
+     * les modèles coupent les longues par <br> (bus et délai de sensor.montre_ecole).
      */
     private static final float SIZE_DEFAULT = 0f;
     private static final float SIZE_BIG = 1.25f * 16;
-    private static final float SIZE_SMALL = 0.8f * 16;
+    private static final float SIZE_SMALL = 16f;
+    /** Hauteur de l'interligne d'un <p> : une ligne vide en tout petit */
+    private static final float SIZE_GAP = 8f;
     private static final Pattern TAG = Pattern.compile("<\\s*(/?)\\s*([a-zA-Z]+)([^>]*)>");
     private static final Pattern COLOR = Pattern.compile("color\\s*=\\s*['\"]?([#a-zA-Z0-9]+)");
 
@@ -130,6 +136,9 @@ public abstract class TemplateTileService extends TileService {
         int bold;
         final Deque<Float> sizes = new ArrayDeque<>();
         final Deque<Integer> colors = new ArrayDeque<>();
+        /** Texte déjà écrit, et s'il finit par un retour à la ligne */
+        boolean started;
+        boolean atLineStart = true;
 
         float size() {
             return sizes.isEmpty() ? SIZE_DEFAULT : sizes.peek();
@@ -143,7 +152,7 @@ public abstract class TemplateTileService extends TileService {
     /** HTML restreint des tuiles Home Assistant → texte mis en forme de la tuile */
     static LayoutElementBuilders.Spannable html(String src) {
         LayoutElementBuilders.Spannable.Builder sp = new LayoutElementBuilders.Spannable.Builder()
-                .setMaxLines(10)
+                .setMaxLines(14)
                 .setMultilineAlignment(LayoutElementBuilders.TEXT_ALIGN_CENTER)
                 .setOverflow(LayoutElementBuilders.TEXT_OVERFLOW_ELLIPSIZE_END);
         Style st = new Style();
@@ -157,6 +166,11 @@ public abstract class TemplateTileService extends TileService {
             String tag = m.group(2).toLowerCase();
             if ("br".equals(tag)) {
                 pending.append('\n');
+                continue;
+            }
+            if ("p".equals(tag)) {
+                if (!closing)
+                    gap(sp, pending, st);
                 continue;
             }
             // Le style change : le texte accumulé part avec l'ancien style
@@ -192,9 +206,29 @@ public abstract class TemplateTileService extends TileService {
         return sp.build();
     }
 
+    /**
+     * <p> : nouveau paragraphe, séparé du précédent par un petit interligne (une ligne vide
+     * entière, comme l'appli HA, prendrait trop de hauteur sur la montre). Rien en tête de texte.
+     */
+    private static void gap(LayoutElementBuilders.Spannable.Builder sp, StringBuilder pending, Style st) {
+        if (pending.length() == 0 && !st.started)
+            return;
+        flush(sp, pending, st);
+        // La hauteur d'une ligne suit sa plus grande police : le retour qui finit la ligne en
+        // cours et la ligne d'interligne (une espace insécable) sont en petit, sinon le retour
+        // pris dans la police normale agrandirait la ligne qu'il termine
+        sp.addSpan(new LayoutElementBuilders.SpanText.Builder()
+                .setText((st.atLineStart ? "" : "\n") + " \n")
+                .setFontStyle(new LayoutElementBuilders.FontStyle.Builder().setSize(sp(SIZE_GAP)).build())
+                .build());
+        st.atLineStart = true;
+    }
+
     private static void flush(LayoutElementBuilders.Spannable.Builder sp, StringBuilder pending, Style st) {
         if (pending.length() == 0)
             return;
+        st.started = true;
+        st.atLineStart = pending.charAt(pending.length() - 1) == '\n';
         LayoutElementBuilders.FontStyle.Builder font = new LayoutElementBuilders.FontStyle.Builder()
                 .setColor(argb(st.color()));
         if (st.size() > 0)
