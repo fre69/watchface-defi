@@ -3,6 +3,7 @@ package com.defi.watchface.mobile;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.PowerManager;
@@ -67,7 +68,7 @@ public class MainActivity extends AppCompatActivity {
         });
 
         // --- Tuiles de la montre (Raccourcis, Modèle 1 à 4, Thermostat, Liste) ---
-        EditText[][] shortcuts = buildShortcutRows(findViewById(R.id.tile_entities));
+        ShortcutRow[] shortcuts = buildShortcutRows(findViewById(R.id.tile_entities));
         EditText[] templates = {
                 findViewById(R.id.tile_template_1), findViewById(R.id.tile_template_2),
                 findViewById(R.id.tile_template_3), findViewById(R.id.tile_template_4) };
@@ -75,8 +76,9 @@ public class MainActivity extends AppCompatActivity {
         EditText tileTodo = findViewById(R.id.tile_todo);
         List<String[]> saved = HaLink.parseTileEntities(prefs.getString(HaLink.PREF_TILE_ENTITIES, ""));
         for (int i = 0; i < Math.min(saved.size(), SHORTCUTS); i++) {
-            shortcuts[i][0].setText(saved.get(i)[0]);
-            shortcuts[i][1].setText(saved.get(i)[1]);
+            shortcuts[i].id.setText(saved.get(i)[0]);
+            shortcuts[i].name.setText(saved.get(i)[1]);
+            shortcuts[i].setColor(saved.get(i)[2]);
         }
         tileClimate.setText(prefs.getString(HaLink.PREF_TILE_CLIMATE, ""));
         tileTodo.setText(prefs.getString(HaLink.PREF_TILE_TODO, HaLink.DEFAULT_TODO));
@@ -103,29 +105,87 @@ public class MainActivity extends AppCompatActivity {
         HaLink.get(this).start();
     }
 
-    /** 9 lignes : numéro, entité, nom court ; rend les champs [ligne][0 = entité, 1 = nom] */
-    private EditText[][] buildShortcutRows(LinearLayout container) {
-        EditText[][] fields = new EditText[SHORTCUTS][2];
+    /** Ligne de réglage d'un raccourci : entité, nom court, couleur */
+    private final class ShortcutRow {
+        EditText id;
+        EditText name;
+        TextView swatch;
+        String color = "";
+
+        /** Pastille : couleur choisie, ou cercle vide (« auto » : couleur de l'état) */
+        void setColor(String c) {
+            color = c == null ? "" : c;
+            GradientDrawable d = new GradientDrawable();
+            d.setShape(GradientDrawable.OVAL);
+            int rgb = swatchColor(color);
+            if (rgb != 0)
+                d.setColor(rgb);
+            else
+                d.setStroke((int) (2 * getResources().getDisplayMetrics().density), 0xFF888888);
+            swatch.setBackground(d);
+            swatch.setText("rouge".equals(color) ? "!" : "");
+        }
+    }
+
+    /** Couleurs des pastilles, mêmes teintes que les boutons de la tuile ; 0 : automatique */
+    private static int swatchColor(String c) {
+        switch (c) {
+            case "rouge": return 0xFFC62828;
+            case "orange": return 0xFFEF6C00;
+            case "vert": return 0xFF2E7D32;
+            case "bleu": return 0xFF1565C0;
+            case "violet": return 0xFF6A1B9A;
+            default: return 0;
+        }
+    }
+
+    /**
+     * 13 lignes : numéro, entité, nom court, pastille de couleur (un appui passe à la
+     * suivante ; rouge = appui confirmé par un second appui sur la montre), ▲ ▼
+     */
+    private ShortcutRow[] buildShortcutRows(LinearLayout container) {
+        float density = getResources().getDisplayMetrics().density;
+        ShortcutRow[] rows = new ShortcutRow[SHORTCUTS];
         for (int i = 0; i < SHORTCUTS; i++) {
+            ShortcutRow r = new ShortcutRow();
+            rows[i] = r;
             LinearLayout row = new LinearLayout(this);
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.CENTER_VERTICAL);
             TextView num = new TextView(this);
             num.setText((i + 1) + ".");
             num.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-            num.setMinWidth((int) (24 * getResources().getDisplayMetrics().density));
+            num.setMinWidth((int) (24 * density));
             row.addView(num);
-            fields[i][0] = field(i == 0 ? "light.salon" : "entité");
-            fields[i][1] = field(i == 0 ? "Salon" : "nom");
-            row.addView(fields[i][0], new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 3));
-            row.addView(fields[i][1], new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 2));
+            r.id = field(i == 0 ? "light.salon" : "entité");
+            r.name = field(i == 0 ? "Salon" : "nom");
+            row.addView(r.id, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 3));
+            row.addView(r.name, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 2));
+            r.swatch = new TextView(this);
+            r.swatch.setGravity(Gravity.CENTER);
+            r.swatch.setTextColor(0xFFFFFFFF);
+            r.swatch.setTypeface(null, android.graphics.Typeface.BOLD);
+            LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams((int) (24 * density), (int) (24 * density));
+            sp.leftMargin = (int) (6 * density);
+            r.swatch.setLayoutParams(sp);
+            r.swatch.setOnClickListener(v -> r.setColor(nextColor(r.color)));
+            r.setColor("");
+            row.addView(r.swatch);
             // ▲ ▼ : échange la ligne avec sa voisine (ordre des boutons sur la tuile)
             final int index = i;
-            row.addView(arrow("▲", i > 0, v -> swap(fields, index, index - 1)));
-            row.addView(arrow("▼", i < SHORTCUTS - 1, v -> swap(fields, index, index + 1)));
+            row.addView(arrow("▲", i > 0, v -> swap(rows, index, index - 1)));
+            row.addView(arrow("▼", i < SHORTCUTS - 1, v -> swap(rows, index, index + 1)));
             container.addView(row);
         }
-        return fields;
+        return rows;
+    }
+
+    private static String nextColor(String c) {
+        String[] all = HaLink.TILE_COLORS;
+        for (int i = 0; i < all.length; i++)
+            if (all[i].equals(c))
+                return all[(i + 1) % all.length];
+        return all[0];
     }
 
     private TextView arrow(String label, boolean enabled, View.OnClickListener l) {
@@ -144,12 +204,15 @@ public class MainActivity extends AppCompatActivity {
         return t;
     }
 
-    private static void swap(EditText[][] fields, int a, int b) {
-        for (int c = 0; c < 2; c++) {
-            CharSequence t = fields[a][c].getText().toString();
-            fields[a][c].setText(fields[b][c].getText().toString());
-            fields[b][c].setText(t);
-        }
+    private static void swap(ShortcutRow[] rows, int a, int b) {
+        String id = rows[a].id.getText().toString(), name = rows[a].name.getText().toString();
+        String color = rows[a].color;
+        rows[a].id.setText(rows[b].id.getText().toString());
+        rows[a].name.setText(rows[b].name.getText().toString());
+        rows[a].setColor(rows[b].color);
+        rows[b].id.setText(id);
+        rows[b].name.setText(name);
+        rows[b].setColor(color);
     }
 
     private EditText field(String hint) {
@@ -163,21 +226,23 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * Enregistrement au format lu par HaLink : « entité | nom » par ligne, lignes vides
-     * sautées (la tuile suit l'ordre des lignes remplies)
+     * Enregistrement au format lu par HaLink : « entité | nom | couleur » par ligne (nom et
+     * couleur facultatifs), lignes vides sautées (la tuile suit l'ordre des lignes remplies)
      */
-    private static String shortcutsText(EditText[][] fields) {
+    private static String shortcutsText(ShortcutRow[] rows) {
         StringBuilder sb = new StringBuilder();
-        for (EditText[] f : fields) {
-            String id = f[0].getText().toString().trim();
-            String name = f[1].getText().toString().replace('|', ' ').trim();
+        for (ShortcutRow r : rows) {
+            String id = r.id.getText().toString().trim();
+            String name = r.name.getText().toString().replace('|', ' ').trim();
             if (id.isEmpty())
                 continue;
             if (sb.length() > 0)
                 sb.append('\n');
             sb.append(id);
-            if (!name.isEmpty())
+            if (!name.isEmpty() || !r.color.isEmpty())
                 sb.append(" | ").append(name);
+            if (!r.color.isEmpty())
+                sb.append(" | ").append(r.color);
         }
         return sb.toString();
     }

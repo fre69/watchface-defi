@@ -816,9 +816,14 @@ public final class HaLink {
         return parseTileEntities(prefs().getString(PREF_TILE_ENTITIES, ""));
     }
 
+    /** Couleurs proposées pour un raccourci (« rouge » : appui confirmé par un second appui) */
+    static final String[] TILE_COLORS = { "", "rouge", "orange", "vert", "bleu", "violet" };
+
     /**
-     * Lignes « entity_id » ou « entity_id | Nom » (virgule acceptée) ; lignes vides et # ignorées.
-     * Rend { entity_id, nom choisi (peut être vide) } ; l'écran de réglage s'en sert aussi
+     * Lignes « entity_id », « entity_id | Nom » ou « entity_id | Nom | couleur » (virgule
+     * acceptée pour la première séparation) ; lignes vides et # ignorées. Rend { entity_id,
+     * nom choisi (peut être vide), couleur (vide : celle de l'état) } ; l'écran de réglage
+     * s'en sert aussi
      */
     static List<String[]> parseTileEntities(String text) {
         List<String[]> list = new ArrayList<>();
@@ -826,14 +831,19 @@ public final class HaLink {
             line = line.trim();
             if (line.isEmpty() || line.startsWith("#"))
                 continue;
-            String id = line, name = "";
+            String id = line, name = "", color = "";
             int sep = line.indexOf('|') >= 0 ? line.indexOf('|') : line.indexOf(',');
             if (sep > 0) {
                 id = line.substring(0, sep).trim();
                 name = line.substring(sep + 1).trim();
+                int sep2 = name.indexOf('|');
+                if (sep2 >= 0) {
+                    color = name.substring(sep2 + 1).trim().toLowerCase(Locale.ROOT);
+                    name = name.substring(0, sep2).trim();
+                }
             }
             if (id.contains("."))
-                list.add(new String[] { id.toLowerCase(Locale.ROOT), name });
+                list.add(new String[] { id.toLowerCase(Locale.ROOT), name, color });
         }
         return list;
     }
@@ -873,8 +883,11 @@ public final class HaLink {
             String name = !e[1].isEmpty() ? e[1] : attrs(id).optString("friendly_name", id);
             boolean available = st != null && !"unavailable".equals(state) && !"unknown".equals(state);
             boolean active = available && isActive(state);
-            // Même couleur que le texte de la tuile : noir sur le jaune d'une entité allumée
-            int color = !available && !isStateless(domain) ? 0xFF666670 : active ? 0xFF000000 : 0xFFFFFFFF;
+            // Même couleur que le texte de la tuile : noir sur le jaune d'une entité allumée,
+            // blanc sur une couleur choisie
+            boolean custom = !e[2].isEmpty();
+            int color = !available && !isStateless(domain) ? 0xFF666670
+                    : active && !custom ? 0xFF000000 : 0xFFFFFFFF;
             String icon = attrs(id).optString("icon", "");
             if (icon.isEmpty())
                 icon = MdiIcons.defaultIcon(domain, state, active);
@@ -896,9 +909,10 @@ public final class HaLink {
             }
             m.putBoolean("available", available || (st != null && isStateless(domain)));
             m.putBoolean("stateless", isStateless(domain));
+            m.putString("color", e[2]);
             list.add(m);
             sig.append(id).append('=').append(name).append('/').append(state).append('/')
-                    .append(iconKey).append(';');
+                    .append(iconKey).append('/').append(e[2]).append(';');
         }
         if (sig.toString().equals(lastTilesSig))
             return;

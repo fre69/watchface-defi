@@ -141,8 +141,14 @@ montre était cassée par PKCE (`Code verifier required`, correctif home-assista
 | Assist (appli + 🎤) | `AssistActivity` | réponse `/ha/assist/reply` | `/ha/assist` « texte » |
 
 - **Réglages dans l'appli du téléphone** (section « Tuiles de la montre ») : entités des Raccourcis
-  (13 lignes « entité / nom court », ▲ ▼ pour changer l'ordre ; enregistrées dans une seule
-  préférence `tile_entities`, `entity_id | nom` par ligne, lue par `HaLink.parseTileEntities`),
+  (13 lignes « entité / nom court / pastille de couleur », ▲ ▼ pour changer l'ordre ; enregistrées
+  dans une seule préférence `tile_entities`, `entity_id | nom | couleur` par ligne, lue par
+  `HaLink.parseTileEntities`). Couleur (`HaLink.TILE_COLORS`) : fond d'une action ou d'une entité
+  allumée, à la place du jaune ; **rouge = action sensible**, lancée seulement au second appui dans
+  les 4 s (« Sûr ? », `TileStore.confirm`). Ex. : `script.urgence_montre | Urgence | rouge`, qui
+  déclenche l'automatisation du bouton jaune 1 de la télécommande (`Q:\scripts.yaml`) ; un capteur
+  (`binary_sensor`) ne s'actionne pas depuis la tuile ; l'icône vient de l'attribut `icon` de
+  l'entité (cf. « Icônes » plus bas), d'où `icon: mdi:alarm-light` sur le script. Puis
   4 modèles (Jinja, ou un simple `sensor.x` dont l'attribut
   `texte` est affiché : `sensor.montre_imprimante`, `sensor.montre_ecole` de `template.yaml`), le `climate`
   et la liste `todo` (réglage absent : `todo.liste_de_francois_revillet`, `HaLink.DEFAULT_TODO` ;

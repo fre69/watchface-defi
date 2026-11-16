@@ -81,6 +81,8 @@ public final class TileStore {
         public final boolean stateless;
         /** Icône MDI dessinée par le téléphone (« mdi:pool|ffffffff »), vide si aucune */
         public final String iconKey;
+        /** Couleur choisie dans l'appli du téléphone (« rouge »…), vide : celle de l'état */
+        public final String color;
 
         Entity(DataMap m) {
             id = m.getString("id", "");
@@ -90,6 +92,12 @@ public final class TileStore {
             available = m.getBoolean("available", false);
             stateless = m.getBoolean("stateless", false);
             iconKey = m.getString("iconKey", "");
+            color = m.getString("color", "");
+        }
+
+        /** Rouge : action sensible (alerte), lancée seulement au second appui */
+        public boolean needsConfirm() {
+            return "rouge".equals(color);
         }
     }
 
@@ -186,6 +194,9 @@ public final class TileStore {
     private static Map<String, Icon> icons = new HashMap<>();
     private static final String[] templates = { "", "", "", "" };
     private static boolean loaded;
+    /** Bouton rouge touché une fois : entity_id → heure ; le second appui dans ce délai lance l'action */
+    private static final Map<String, Long> armed = new HashMap<>();
+    static final long CONFIRM_MS = 4_000L;
     /** Appuis en attente du nouvel état : entity_id → heure de l'appui */
     private static final Map<String, Long> pressed = new HashMap<>();
     /** Échecs signalés par le téléphone : entity_id → heure */
@@ -252,6 +263,31 @@ public final class TileStore {
     public static synchronized boolean isPending(String id) {
         Long t = pressed.get(id);
         return t != null && System.currentTimeMillis() - t < PENDING_MS;
+    }
+
+    /** Premier appui sur un bouton rouge, en attente de confirmation */
+    public static synchronized boolean isArmed(String id) {
+        Long t = armed.get(id);
+        return t != null && System.currentTimeMillis() - t < CONFIRM_MS;
+    }
+
+    /**
+     * Appui sur un bouton rouge : true au second appui (l'action part, l'armement est
+     * consommé), false au premier (la tuile affiche « Sûr ? » et se redessine sans au bout
+     * du délai)
+     */
+    static boolean confirm(Context ctx, String id) {
+        synchronized (TileStore.class) {
+            if (isArmed(id)) {
+                armed.remove(id);
+                return true;
+            }
+            armed.put(id, System.currentTimeMillis());
+        }
+        Context app = ctx.getApplicationContext();
+        main.postDelayed(() -> TileService.getUpdater(app).requestUpdate(ShortcutsTileService.class),
+                CONFIRM_MS + 100);
+        return false;
     }
 
     /** Échec signalé par le téléphone dans les 5 dernières secondes */

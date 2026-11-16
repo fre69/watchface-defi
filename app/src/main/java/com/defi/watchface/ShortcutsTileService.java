@@ -58,8 +58,16 @@ public class ShortcutsTileService extends TileService {
     protected ListenableFuture<TileBuilders.Tile> onTileRequest(@NonNull RequestBuilders.TileRequest request) {
         String clicked = request.getCurrentState().getLastClickableId();
         if (clicked.startsWith(CLICK_PREFIX)) {
+            String id = clicked.substring(CLICK_PREFIX.length());
+            // Bouton rouge : le premier appui demande confirmation, rien ne part
+            TileStore.Entity target = null;
+            for (TileStore.Entity e : TileStore.getEntities())
+                if (e.id.equals(id))
+                    target = e;
+            if (target != null && target.needsConfirm() && !TileStore.confirm(this, id))
+                return TileStore.logged("Raccourcis", Futures.immediateFuture(tile()));
             // Nouvel état attendu du téléphone avant de redessiner
-            ListenableFuture<Void> wait = TileStore.press(this, clicked.substring(CLICK_PREFIX.length()));
+            ListenableFuture<Void> wait = TileStore.press(this, id);
             return TileStore.logged("Raccourcis",
                     Futures.transform(wait, v -> tile(), MoreExecutors.directExecutor()));
         }
@@ -179,9 +187,14 @@ public class ShortcutsTileService extends TileService {
 
     private LayoutElementBuilders.LayoutElement button(TileStore.Entity e) {
         int bg, fg = 0xFFFFFFFF;
+        int custom = customColor(e.color);
+        boolean armed = TileStore.isArmed(e.id);
         if (!e.available) {
             bg = C_UNAVAILABLE;
             fg = 0xFF666670;
+        } else if (custom != 0 && (e.stateless || e.active)) {
+            // Couleur choisie : fond d'une action, ou d'une entité allumée (à la place du jaune)
+            bg = custom;
         } else if (e.stateless) {
             bg = C_ACTION;
         } else if (e.active) {
@@ -199,14 +212,20 @@ public class ShortcutsTileService extends TileService {
                         .setId(CLICK_PREFIX + e.id)
                         .setOnClick(new ActionBuilders.LoadAction.Builder().build())
                         .build());
+        // Bouton rouge touché une fois : contour blanc et « Sûr ? » jusqu'au second appui
+        if (armed)
+            mods.setBorder(new ModifiersBuilders.Border.Builder()
+                    .setWidth(dp(3)).setColor(argb(0xFFFFFFFF)).build());
         // Appui pas encore confirmé (bleu) ou refusé (rouge) : l'état dessiné est incertain
-        if (TileStore.hasFailed(e.id) || TileStore.isPending(e.id))
+        else if (TileStore.hasFailed(e.id) || TileStore.isPending(e.id))
             mods.setBorder(new ModifiersBuilders.Border.Builder()
                     .setWidth(dp(3))
                     .setColor(argb(TileStore.hasFailed(e.id) ? C_FAILED : C_PENDING))
                     .build());
         LayoutElementBuilders.LayoutElement content;
-        if (!e.iconKey.isEmpty() && TileStore.getIcons().containsKey(e.iconKey)) {
+        if (armed) {
+            content = text("Sûr ?", circleDp >= CIRCLE_DP ? 12 : 11, 0xFFFFFFFF, 1);
+        } else if (!e.iconKey.isEmpty() && TileStore.getIcons().containsKey(e.iconKey)) {
             // Icône de l'entité, comme dans l'appli Home Assistant, et son nom en petit
             content = new LayoutElementBuilders.Column.Builder()
                     .addContent(new LayoutElementBuilders.Image.Builder()
@@ -225,6 +244,18 @@ public class ShortcutsTileService extends TileService {
                 .setModifiers(mods.build())
                 .addContent(content)
                 .build();
+    }
+
+    /** Teintes des couleurs choisies dans l'appli du téléphone (mêmes que ses pastilles) */
+    private static int customColor(String c) {
+        switch (c) {
+            case "rouge": return 0xFFC62828;
+            case "orange": return 0xFFEF6C00;
+            case "vert": return 0xFF2E7D32;
+            case "bleu": return 0xFF1565C0;
+            case "violet": return 0xFF6A1B9A;
+            default: return 0;
+        }
     }
 
     private LayoutElementBuilders.LayoutElement micButton() {
