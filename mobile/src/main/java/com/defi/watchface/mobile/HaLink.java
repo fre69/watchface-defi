@@ -104,8 +104,12 @@ public final class HaLink {
     private static final String AGENDA_PATH = "/ha/agenda";
     private static final String TILES_PATH = "/ha/tiles";
     private static final String THERMOSTAT_PATH = "/ha/thermostat";
-    /** Appuis successifs sur + ou − : la consigne visée sert de base pendant ce délai */
-    private static final long CLIMATE_PENDING_MS = 4_000L;
+    /**
+     * Consigne demandée par + ou −, pas encore relue dans HA : sert de base aux appuis
+     * suivants et s'affiche sur la montre pendant ce délai. Netatmo (climate.cuisine) ne
+     * relit l'état du cloud qu'une fois par minute : avant, HA garde l'ancienne consigne
+     */
+    private static final long CLIMATE_PENDING_MS = 150_000L;
     /** Suivi du numéro de l'emplacement : /ha/template/1 à /ha/template/4 */
     private static final String TEMPLATE_PATH = "/ha/template/";
     /** Commande venue de la montre alors que le lien est coupé : abandonnée après ce délai */
@@ -190,6 +194,11 @@ public final class HaLink {
     /** Consigne demandée par le dernier appui, avant que Home Assistant ne la confirme */
     private double climatePendingTarget = Double.NaN;
     private long climatePendingAt;
+    /**
+     * set_temperature sans réponse : Netatmo réécrit son ancienne consigne dans l'état juste
+     * avant de répondre, une égalité vue pendant l'appel ne confirme donc rien
+     */
+    private int climateCallsInFlight;
     /** Réponses attendues aux commandes de la montre, par identifiant de message */
     private final Map<Integer, Callback> pendingCommands = new HashMap<>();
     /** Commandes arrivées pendant une coupure, lancées à la reconnexion */
@@ -972,10 +981,16 @@ public final class HaLink {
         double step = a.optDouble("target_temp_step", 0.5);
         String name = a.optString("friendly_name", climateEntity);
         String action = hvacActionLabel(a.optString("hvac_action", ""), state);
-        // Consigne confirmée : l'appui en attente est soldé
-        if (!Double.isNaN(climatePendingTarget) && Math.abs(target - climatePendingTarget) < 0.01)
+        // Consigne relue dans HA (appels terminés), ou délai passé : l'appui en attente est soldé
+        if (!Double.isNaN(climatePendingTarget)
+                && ((climateCallsInFlight == 0 && Math.abs(target - climatePendingTarget) < 0.01)
+                || System.currentTimeMillis() - climatePendingAt >= CLIMATE_PENDING_MS))
             climatePendingTarget = Double.NaN;
-        String sig = name + "|" + action + "|" + target + "|" + current + "|" + available;
+        // En attente : la montre affiche la consigne demandée (en bleu), pas l'ancienne
+        boolean requested = !Double.isNaN(climatePendingTarget);
+        if (requested)
+            target = climatePendingTarget;
+        String sig = name + "|" + action + "|" + target + "|" + current + "|" + available + "|" + requested;
         if (sig.equals(lastThermostatSig))
             return;
         PutDataMapRequest req = PutDataMapRequest.create(THERMOSTAT_PATH);
@@ -986,6 +1001,7 @@ public final class HaLink {
         m.putDouble("current", current);
         m.putDouble("step", step);
         m.putBoolean("available", available);
+        m.putBoolean("requested", requested);
         m.putLong("sentAt", System.currentTimeMillis());
         if (send(req, tilesLive()))
             lastThermostatSig = sig;
@@ -1002,7 +1018,8 @@ public final class HaLink {
             double target = a.optDouble("temperature", Double.NaN);
             double step = a.optDouble("target_temp_step", 0.5);
             long now = System.currentTimeMillis();
-            // Appuis rapprochés : on part de la consigne déjà demandée, pas de l'ancienne
+            // Appuis successifs : on part de la consigne déjà demandée, pas de celle que HA
+            // n'a pas encore relue
             if (!Double.isNaN(climatePendingTarget) && now - climatePendingAt < CLIMATE_PENDING_MS)
                 target = climatePendingTarget;
             if (Double.isNaN(target)) {
@@ -1015,18 +1032,32 @@ public final class HaLink {
                 next = Math.max(min, next);
             if (!Double.isNaN(max))
                 next = Math.min(max, next);
-            climatePendingTarget = next;
+            final double requested = next;
+            climatePendingTarget = requested;
             climatePendingAt = now;
             tilesLiveUntil = Math.max(tilesLiveUntil, now + LIVE_AFTER_PRESS_MS);
+            // La montre voit tout de suite la consigne demandée, puis la vraie au bout du délai
+            publishThermostat();
+            handler.postDelayed(this::publishThermostat, CLIMATE_PENDING_MS + 500);
+            climateCallsInFlight++;
+            Callback done = (ok, text, more) -> {
+                climateCallsInFlight = Math.max(0, climateCallsInFlight - 1);
+                // Refus : on revient à la consigne de HA (sauf si un autre appui a suivi)
+                if (!ok && climatePendingTarget == requested)
+                    climatePendingTarget = Double.NaN;
+                // Une confirmation arrivée pendant l'appel compte maintenant
+                publishThermostat();
+                cb.done(ok, text, more);
+            };
             try {
                 sendCommand(new JSONObject()
                         .put("type", "call_service")
                         .put("domain", "climate")
                         .put("service", "set_temperature")
                         .put("target", new JSONObject().put("entity_id", climateEntity))
-                        .put("service_data", new JSONObject().put("temperature", next)), cb);
+                        .put("service_data", new JSONObject().put("temperature", requested)), done);
             } catch (JSONException e) {
-                cb.done(false, "Commande illisible", false);
+                done.done(false, "Commande illisible", false);
             }
         }, cb));
     }

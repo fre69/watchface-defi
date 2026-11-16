@@ -27,8 +27,9 @@ import java.util.Locale;
 /**
  * Tuile Thermostat, comme celle de l'appli Home Assistant : nom, action en
  * cours, consigne, température mesurée, boutons − et +. Un appui attend la
- * nouvelle consigne (2,5 s au plus) ; tant qu'elle n'est pas confirmée, elle
- * s'affiche en bleu.
+ * nouvelle consigne (2,5 s au plus). Le téléphone renvoie aussitôt la consigne
+ * demandée et cumule les appuis à partir d'elle ; tant que HA ne l'a pas relue
+ * (Netatmo : jusqu'à 1 min), elle s'affiche en bleu.
  */
 public class ThermostatTileService extends TileService {
 
@@ -89,7 +90,7 @@ public class ThermostatTileService extends TileService {
                     14, 0xFFAAAAAA, 3));
         } else {
             int targetColor = TileStore.hasClimateFailed() ? 0xFFFF4466
-                    : TileStore.isClimatePending() ? 0xFF66BBFF : 0xFFFFFFFF;
+                    : TileStore.isClimatePending() || t.requested ? 0xFF66BBFF : 0xFFFFFFFF;
             col.addContent(ShortcutsTileService.text(t.name, 16, 0xFFFFFFFF, 1))
                     .addContent(ShortcutsTileService.spacer(6))
                     .addContent(ShortcutsTileService.text(t.available ? t.action : "Indisponible",

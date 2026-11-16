@@ -150,7 +150,14 @@ montre était cassée par PKCE (`Code verifier required`, correctif home-assista
 - **Appui** : la tuile attend le nouvel état (2,5 s au plus) avant de se redessiner ; contour bleu =
   appui pas encore confirmé, rouge = refusé. Bascule comme l'appli HA (`lock`/`unlock`,
   `cover.toggle`, `turn_on` des scènes et scripts, `press` des boutons, sinon `homeassistant.toggle`).
-  Thermostat : appuis rapprochés cumulés depuis la consigne demandée (`target_temp_step`, bornes min/max).
+  Thermostat : appuis cumulés depuis la consigne demandée (`target_temp_step`, bornes min/max), gardée
+  2,5 min ou jusqu'à ce que HA la relise : ⚠️ **Netatmo (`climate.cuisine`) ne relit le cloud qu'une
+  fois par minute**, HA garde l'ancienne consigne jusque-là (un délai de 4 s faisait repartir chaque
+  appui de l'ancienne valeur). Depuis le 16/11/2026, l'automatisation HA `netatmo_setpoint_webhook`
+  applique la consigne dès le webhook Netatmo (≈ 2 s), que l'intégration ignore (cf. `Q:\CLAUDE.md`). Le téléphone renvoie aussitôt la consigne demandée (`requested`,
+  affichée en bleu) ; refus de HA : retour à sa consigne. Une égalité vue **pendant** l'appel
+  `set_temperature` ne confirme rien (`climateCallsInFlight`) : l'intégration Netatmo réécrit son
+  ancienne consigne dans l'état juste avant de répondre.
 - **Icônes** : attribut `icon` de l'entité (sinon icône par défaut du domaine, `MdiIcons.defaultIcon`),
   dessinée sur le téléphone avec la police MDI 7.4.47 (`mobile/src/main/assets/mdi.ttf`, Apache 2.0,
   table `mdi.txt` tirée du CSS de `@mdi/font`) dans la couleur de l'état, envoyée en PNG ; la montre

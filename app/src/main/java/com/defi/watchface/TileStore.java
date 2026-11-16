@@ -112,6 +112,8 @@ public final class TileStore {
         public final double target;
         public final double current;
         public final boolean available;
+        /** Consigne demandée, pas encore relue dans HA (Netatmo : jusqu'à 1 min) */
+        public final boolean requested;
 
         Thermostat(DataMap m) {
             name = m.getString("name", "");
@@ -119,6 +121,7 @@ public final class TileStore {
             target = m.getDouble("target", Double.NaN);
             current = m.getDouble("current", Double.NaN);
             available = m.getBoolean("available", false);
+            requested = m.getBoolean("requested", false);
         }
     }
 
