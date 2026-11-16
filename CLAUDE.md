@@ -134,7 +134,7 @@ montre était cassée par PKCE (`Code verifier required`, correctif home-assista
 
 | Tuile (carrousel) | Service | Données (téléphone → montre) | Commande (montre → téléphone) |
 |---|---|---|---|
-| Raccourcis HA (13 entités + 🎤, rangées 3-4-3 jusqu'à 2-3-4-3-2, cercles de 44 dp au-delà de 8) | `ShortcutsTileService` | `/ha/tiles` : état, nom, icône | `/ha/action` « entity_id », échec `/ha/action/fail` |
+| Raccourcis HA (13 entités + 🎤, rangées 3-4-3 jusqu'à 2-3-4-3-2, cercles de 44 dp au-delà de 8 ; à partir de 4 rangées, deux rangées décalées d'un demi-pas s'emboîtent sans écart, sinon le bord du rond rogne la première et la dernière) | `ShortcutsTileService` | `/ha/tiles` : état, nom, icône | `/ha/action` « entity_id », échec `/ha/action/fail` |
 | Modèle HA 1 à 4 | `TemplateTileService$Slot1…4` | `/ha/template/1…4` | — |
 | Thermostat HA | `ThermostatTileService` | `/ha/thermostat` | `/ha/climate` « + » / « - », échec `/ha/climate/fail` |
 | Liste HA (entité `todo`) | `TodoTileService`, `TodoListActivity`, `TodoActivity` | `/ha/todo` : tâches à faire, 20 faites, nombre de faites | `/ha/todo` « check\|uncheck\|delete⏎uid », « add⏎texte », « rename⏎uid⏎texte », échec `/ha/todo/fail` |

@@ -41,7 +41,7 @@ public class ShortcutsTileService extends TileService {
     private static final int CIRCLE_DP = 50;
     private static final int CIRCLE_SMALL_DP = 44;
     private static final int GAP_DP = 5;
-    /** 5 rangées de 44 dp : écart vertical réduit et sans marge, pour tenir dans les 233 dp */
+    /** 4 rangées et plus : écart entre deux rangées alignées (les rangées décalées n'en ont pas) */
     private static final int GAP_TIGHT_DP = 3;
     /** Taille des cercles de la tuile en cours de construction */
     private int circleDp = CIRCLE_DP;
@@ -125,8 +125,11 @@ public class ShortcutsTileService extends TileService {
         // Écran rond : rangées plus courtes en haut et en bas
         int[] rows = rowSizes(items.size());
         // 5 rangées (2-3-4-3-2) : 5 × 44 + 4 × 3 = 232 dp, la hauteur de l'écran, sans marge
-        boolean tight = rows.length >= 5;
-        int vGap = tight ? GAP_TIGHT_DP : GAP_DP;
+        // 4 rangées et plus : sans marge, et sans écart entre deux rangées décalées d'un
+        // demi-pas (nombres de cercles de parité différente) : leurs cercles s'emboîtent
+        // (≈ 50 dp entre centres pour 44 de diamètre). 2-3-4-3-2 tient ainsi en 220 dp, sans
+        // que le bord du rond rogne la rangée du haut ni celle du bas
+        boolean tight = rows.length >= 4;
         int k = 0;
         for (int r = 0; r < rows.length; r++) {
             LayoutElementBuilders.Row.Builder row = new LayoutElementBuilders.Row.Builder();
@@ -135,8 +138,12 @@ public class ShortcutsTileService extends TileService {
                     row.addContent(new LayoutElementBuilders.Spacer.Builder().setWidth(dp(GAP_DP)).build());
                 row.addContent(items.get(k));
             }
-            if (r > 0)
-                col.addContent(spacer(vGap));
+            if (r > 0) {
+                boolean staggered = (rows[r] + rows[r - 1]) % 2 == 1;
+                int vGap = !tight ? GAP_DP : staggered ? 0 : GAP_TIGHT_DP;
+                if (vGap > 0)
+                    col.addContent(spacer(vGap));
+            }
             col.addContent(row.build());
         }
         return new LayoutElementBuilders.Box.Builder()
@@ -153,11 +160,12 @@ public class ShortcutsTileService extends TileService {
     /** Nombre de cercles par rangée pour n cercles (micro compris) */
     private static int[] rowSizes(int n) {
         switch (n) {
-            // Au-delà de 10 : rangées de 2 ajoutées en haut et en bas, là où le rond est étroit
+            // Au-delà de 10 : rangées courtes en haut et en bas, là où le rond est étroit ;
+            // rangées voisines décalées autant que possible (emboîtées, cf. layout)
             case 14: return new int[] { 2, 3, 4, 3, 2 };
-            case 13: return new int[] { 2, 3, 3, 3, 2 };
+            case 13: return new int[] { 2, 3, 4, 3, 1 };
             case 12: return new int[] { 2, 3, 4, 3 };
-            case 11: return new int[] { 2, 3, 3, 3 };
+            case 11: return new int[] { 3, 4, 3, 1 };
             case 10: return new int[] { 3, 4, 3 };
             case 9: return new int[] { 3, 3, 3 };
             case 8: return new int[] { 2, 3, 3 };
