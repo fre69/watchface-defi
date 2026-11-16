@@ -79,12 +79,9 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- Assistant de la montre : attribuable au bouton (comme l'appli Home Assistant) -->
-            <intent-filter>
-                <action android:name="android.intent.action.ASSIST" />
-                <action android:name="android.intent.action.VOICE_ASSIST" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
+            <!-- Pas de filtre ASSIST / VOICE_ASSIST : deux candidats font afficher un sélecteur à
+                 chaque appui long sur le bouton, et Gemini n'y figure pas (rôle ASSISTANT, pas
+                 une activité ordinaire). Assist HA se lance par la tuile ou la liste des applis. -->
         </activity>
 
         <!-- Tuiles Home Assistant : état poussé par le téléphone, aucune requête de la montre -->

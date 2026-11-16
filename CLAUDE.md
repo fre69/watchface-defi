@@ -176,8 +176,10 @@ montre était cassée par PKCE (`Code verifier required`, correctif home-assista
   (dictée ou clavier, modifiable avant envoi) pour corriger ; ↺ nouvelle conversation (écran vidé,
   `/ha/assist/new` : le téléphone oublie le `conversation_id`).
   `singleTask` : relancer Assist (tuile, bouton) reprend la page ouverte (`onNewIntent` → dictée)
-  au lieu d'en empiler une nouvelle. Déclaré `ASSIST` / `VOICE_ASSIST` : choisissable comme
-  assistant de la montre (bouton).
+  au lieu d'en empiler une nouvelle. ⚠️ **Jamais de filtre `ASSIST` / `VOICE_ASSIST`** (retiré le
+  16/11/2026) : avec deux activités candidates, l'appui long sur le bouton ouvre un sélecteur à chaque
+  fois, et Gemini (`com.google.android.wearable.assistant`, titulaire du rôle `ASSISTANT`) n'y figure
+  pas. Assist HA se lance par le 🎤 des Raccourcis ou la liste des applis.
 - Téléphone éteint ou sans réseau : les tuiles gardent la dernière valeur et affichent « 📵 ».
 - ⚠️ **Toute lecture de la DataLayer a un délai** (`Tasks.await(…, 5 s)`) : les tuiles partagent un seul
   fil (`TileStore.BACKGROUND`), et une pièce jointe pas encore arrivée (l'image d'une ancienne tuile

@@ -46,7 +46,8 @@ import java.util.Set;
  * et renvoie la réponse (/ha/assist/reply). Il garde la conversation 5 min après le dernier
  * échange ; l'écran garde l'historique aussi longtemps, même fermé puis rouvert. Quand Home
  * Assistant pose une question en retour, l'écoute se relance seule. Relancer Assist (tuile,
- * bouton de la montre) reprend la page ouverte. Déclaré comme assistant (ASSIST, VOICE_ASSIST).
+ * liste des applis) reprend la page ouverte. Pas déclaré comme assistant (ASSIST,
+ * VOICE_ASSIST) : le bouton afficherait un sélecteur sans Gemini à chaque appui long.
  */
 public class AssistActivity extends Activity {
 
