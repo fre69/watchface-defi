@@ -162,7 +162,7 @@ montre était cassée par PKCE (`Code verifier required`, correctif home-assista
   sans erreur visible (`ProtoTilesPlTileViewInstance: Activity constraints not met`).
 - ⚠️ Le clavier plein écran de la montre annonce ✓ (`IME_ACTION_DONE`) **avant** de recopier le texte
   dans le champ (encore l'ancien 400 ms après) : `TodoActivity` enregistre à l'arrivée du texte
-  (`TextWatcher`), repli au bout de 1,5 s. Un test par `adb shell input text` n'atteint jamais le
+  (`TextWatcher`), repli au bout de 1,5 s (vérifié à la main le 16/11/2026). Un test par `adb shell input text` n'atteint jamais le
   champ (texte resté dans la zone du clavier) : tester le renommage à la main.
 - **Rafraîchissement** : abonnements HA (`subscribe_entities`, `render_template` qui ne renvoie que
   quand le résultat change). Les changements partent **non urgents** (aucun réveil de la montre,
