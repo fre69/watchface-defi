@@ -11,16 +11,18 @@ fait tout le travail réseau ; la montre ne parle jamais à Home Assistant ni à
   jour, vignette de la dernière voiture passée sur le chemin (photo en grand à l'appui).
 - **Notifications du téléphone** dans une bulle du cadran, avec réponses rapides (Oui / Non / OK /
   dictée) et allumage de l'écran à l'arrivée.
-- **Tuiles Home Assistant** : Raccourcis (9 entités avec leur état réel et leur icône, + micro),
+- **Tuiles Home Assistant** : Raccourcis (13 entités avec leur état réel et leur icône, + micro),
   Modèle 1 à 4 (texte d'un modèle HA mis en forme : horaires d'école et bus des enfants, imprimante
-  3D), Thermostat (consigne − / +).
-- **Assist** : dialogue vocal avec Home Assistant, choisissable comme assistant de la montre.
+  3D), Thermostat (consigne − / +), Liste (tâches d'une liste HA : ajouter, modifier, cocher).
+- **Assist** : dialogue vocal avec Home Assistant, lancé par le 🎤 des Raccourcis ou la liste des
+  applis (le bouton de la montre reste à Gemini).
 
 **Sur le téléphone (module `mobile`)**
 - Relais des notifications vers la montre.
 - Lien permanent avec Home Assistant (WebSocket, jeton longue durée) : il pousse à la montre ce qui
   change, exécute les appuis des tuiles et pose les questions à Assist.
-- Écran de réglage : adresse et jeton HA, entités et modèles des tuiles.
+- Écran de réglage (thème sombre) : adresse et jeton HA, entités et modèles des tuiles, liste de
+  tâches.
 
 Les deux appareils communiquent par la **Wearable Data Layer** (Bluetooth, ou cloud de Google quand
 le Bluetooth manque).

@@ -10,7 +10,7 @@
         android:label="Defi Cadran Companion"
         android:allowBackup="false"
         android:icon="@android:mipmap/sym_def_app_icon"
-        android:theme="@style/Theme.AppCompat.Light">
+        android:theme="@style/Theme.AppCompat">
 
         <meta-data
             android:name="com.google.android.wearable.standalone"
@@ -47,7 +47,7 @@
             </intent-filter>
         </service>
 
-        <!-- Commandes de la montre pour Home Assistant : tuile Raccourcis, Assist, tuile affichée -->
+        <!-- Commandes de la montre pour Home Assistant : tuiles Raccourcis et Liste, Assist, tuile affichée -->
         <service
             android:name=".HaCommandService"
             android:exported="true">
@@ -61,6 +61,10 @@
                     android:scheme="wear"
                     android:host="*"
                     android:path="/ha/assist" />
+                <data
+                    android:scheme="wear"
+                    android:host="*"
+                    android:path="/ha/todo" />
                 <data
                     android:scheme="wear"
                     android:host="*"

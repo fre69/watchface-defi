@@ -37,6 +37,8 @@ public class DataLayerListenerService extends WearableListenerService {
             TileStore.actionFailed(this, new String(event.getData(), StandardCharsets.UTF_8));
         else if ((TileStore.CLIMATE_PATH + "/fail").equals(path))
             TileStore.climateFailed(this);
+        else if ((TileStore.TODO_PATH + "/fail").equals(path))
+            TileStore.todoFailed(this, new String(event.getData(), StandardCharsets.UTF_8));
         else if (AssistActivity.REPLY_PATH.equals(path))
             AssistActivity.onReply(event.getData());
     }

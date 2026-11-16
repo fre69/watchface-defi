@@ -134,14 +134,36 @@ montre était cassée par PKCE (`Code verifier required`, correctif home-assista
 
 | Tuile (carrousel) | Service | Données (téléphone → montre) | Commande (montre → téléphone) |
 |---|---|---|---|
-| Raccourcis HA (9 entités + 🎤, rangées 3-3-3 ou 3-4-3, cercles de 44 dp au-delà de 8) | `ShortcutsTileService` | `/ha/tiles` : état, nom, icône | `/ha/action` « entity_id », échec `/ha/action/fail` |
+| Raccourcis HA (13 entités + 🎤, rangées 3-4-3 jusqu'à 2-3-4-3-2, cercles de 44 dp au-delà de 8) | `ShortcutsTileService` | `/ha/tiles` : état, nom, icône | `/ha/action` « entity_id », échec `/ha/action/fail` |
 | Modèle HA 1 à 4 | `TemplateTileService$Slot1…4` | `/ha/template/1…4` | — |
 | Thermostat HA | `ThermostatTileService` | `/ha/thermostat` | `/ha/climate` « + » / « - », échec `/ha/climate/fail` |
+| Liste HA (entité `todo`) | `TodoTileService`, `TodoListActivity`, `TodoActivity` | `/ha/todo` : tâches à faire, 20 faites, nombre de faites | `/ha/todo` « check\|uncheck\|delete⏎uid », « add⏎texte », « rename⏎uid⏎texte », échec `/ha/todo/fail` |
 | Assist (appli + 🎤) | `AssistActivity` | réponse `/ha/assist/reply` | `/ha/assist` « texte » |
 
 - **Réglages dans l'appli du téléphone** (section « Tuiles de la montre ») : entités des Raccourcis
-  (`entity_id | nom court`, une par ligne), 4 modèles (Jinja, ou un simple `sensor.x` dont l'attribut
-  `texte` est affiché : `sensor.montre_imprimante`, `sensor.montre_ecole` de `template.yaml`) et le `climate`.
+  (13 lignes « entité / nom court », ▲ ▼ pour changer l'ordre ; enregistrées dans une seule
+  préférence `tile_entities`, `entity_id | nom` par ligne, lue par `HaLink.parseTileEntities`),
+  4 modèles (Jinja, ou un simple `sensor.x` dont l'attribut
+  `texte` est affiché : `sensor.montre_imprimante`, `sensor.montre_ecole` de `template.yaml`), le `climate`
+  et la liste `todo` (réglage absent : `todo.liste_de_francois_revillet`, `HaLink.DEFAULT_TODO` ;
+  champ vidé : pas de liste). L'appli du téléphone est en thème sombre (`Theme.AppCompat`).
+- **Liste** : l'état d'une entité `todo` n'est que le nombre de tâches à faire ; les tâches
+  viennent de l'abonnement WebSocket `todo/item/subscribe` (liste entière renvoyée à chaque
+  changement). Sur la tuile : ○ coche (appui confirmé par la nouvelle liste, contour bleu en
+  attente, rouge si refusé), ✓ décoche, le texte ouvre `TodoActivity` (champ modifiable : clavier ou
+  dictée du système ; 🗑 supprime au second appui), + ouvre directement la saisie du système.
+  Tâches faites **masquées** : le bouton « ✓N » à côté du + les affiche jusqu'à ce qu'on quitte la
+  tuile (`onTileLeaveEvent`). Une tuile ne défile pas : 4 lignes au plus (à 5, le + touchait le bas
+  du rond) ; au-delà, « Tout voir » (et le titre) ouvre `TodoListActivity`, la liste entière qui
+  défile, mêmes gestes, redessinée à chaque liste reçue (`TileStore.todoListener`).
+  Services `todo.update_item` (`status`, `rename`), `todo.add_item`, `todo.remove_item`, la tâche
+  désignée par son `uid`.
+- ⚠️ **Une activité lancée depuis une tuile doit être `exported="true"`**, sinon le système refuse
+  sans erreur visible (`ProtoTilesPlTileViewInstance: Activity constraints not met`).
+- ⚠️ Le clavier plein écran de la montre annonce ✓ (`IME_ACTION_DONE`) **avant** de recopier le texte
+  dans le champ (encore l'ancien 400 ms après) : `TodoActivity` enregistre à l'arrivée du texte
+  (`TextWatcher`), repli au bout de 1,5 s. Un test par `adb shell input text` n'atteint jamais le
+  champ (texte resté dans la zone du clavier) : tester le renommage à la main.
 - **Rafraîchissement** : abonnements HA (`subscribe_entities`, `render_template` qui ne renvoie que
   quand le résultat change). Les changements partent **non urgents** (aucun réveil de la montre,
   livrés quand elle est éveillée). Quand une tuile s'affiche (`onTileEnterEvent`, au plus 1 fois / 5 s),
@@ -229,7 +251,9 @@ Lu dans le code décompilé (`wear-services.jar`, `services.jar`, `HeyClockworkS
 - `app/src/main/java/com/defi/watchface/ReplySender.java` / `ReplyActivity.java` — Réponses rapides depuis la bulle
 - `app/src/main/java/com/defi/watchface/TileStore.java` — Données des tuiles HA, appuis en attente, demande d'état frais
 - `app/src/main/java/com/defi/watchface/ShortcutsTileService.java`, `TemplateTileService.java`,
-  `ThermostatTileService.java` — Tuiles Home Assistant
+  `ThermostatTileService.java`, `TodoTileService.java` — Tuiles Home Assistant
+- `app/src/main/java/com/defi/watchface/TodoActivity.java` — Ajout et édition d'une tâche de la tuile Liste
+- `app/src/main/java/com/defi/watchface/TodoListActivity.java` — Liste entière qui défile (« Tout voir »)
 - `app/src/main/java/com/defi/watchface/AssistActivity.java` — Dialogue avec Assist (appli « Assist HA »,
   icône `res/drawable/ic_assist.xml` : rond bleu HA, `mdi:microphone-message`)
 - `app/src/main/AndroidManifest.xml` — Déclaration des services
@@ -280,7 +304,7 @@ adb -s <phone-serial> install -r mobile/build/outputs/apk/debug/mobile-debug.apk
 # Ajouter une tuile au carrousel sans passer par la montre (elle se place en tête)
 adb shell am broadcast -a com.google.android.wearable.app.DEBUG_SURFACE --es operation add-tile \
   --ecn component 'com.defi.watchface.distance/com.defi.watchface.ShortcutsTileService'
-# (TemplateTileService\$Slot1…4, ThermostatTileService)
+# (TemplateTileService\$Slot1…4, ThermostatTileService, TodoTileService)
 
 # Screenshot montre
 adb exec-out screencap -p > screenshot.png

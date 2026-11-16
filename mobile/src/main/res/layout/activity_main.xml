@@ -85,19 +85,15 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Raccourcis : une entité par ligne, nom court facultatif après « | » (9 au plus)"
+            android:text="Raccourcis : entité et nom court facultatif, dans l'ordre de la tuile (▲ ▼ pour déplacer)"
             android:textSize="14sp" />
 
-        <EditText
+        <!-- 9 lignes « entité | nom », construites par MainActivity -->
+        <LinearLayout
             android:id="@+id/tile_entities"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="top"
-            android:hint="light.salon | Salon"
-            android:inputType="textMultiLine|textNoSuggestions"
-            android:minLines="4"
-            android:fontFamily="monospace"
-            android:importantForAutofill="no" />
+            android:orientation="vertical" />
 
         <TextView
             android:layout_width="match_parent"
@@ -158,6 +154,22 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:hint="climate.cuisine"
+            android:inputType="textNoSuggestions"
+            android:fontFamily="monospace"
+            android:importantForAutofill="no" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="Liste de tâches (todo)"
+            android:textSize="14sp" />
+
+        <EditText
+            android:id="@+id/tile_todo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="todo.courses"
             android:inputType="textNoSuggestions"
             android:fontFamily="monospace"
             android:importantForAutofill="no" />

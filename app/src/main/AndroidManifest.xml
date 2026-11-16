@@ -64,6 +64,24 @@
             android:taskAffinity=""
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
+        <!-- Tuile Liste : ajout (saisie du système) et édition d'une tâche. Exportée : sinon
+             le système refuse de la lancer depuis la tuile (« Activity constraints not met ») -->
+        <activity
+            android:name=".TodoActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:taskAffinity=".todo"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar" />
+
+        <!-- Tuile Liste : liste entière qui défile (une tuile ne défile pas) ; exportée pour
+             la même raison -->
+        <activity
+            android:name=".TodoListActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:taskAffinity=".todo"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar" />
+
         <!-- Assist : dictée vers Home Assistant, par le téléphone -->
         <activity
             android:name=".AssistActivity"
@@ -160,6 +178,20 @@
             android:exported="true"
             android:icon="@drawable/ic_launcher"
             android:label="Thermostat HA"
+            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
+            <intent-filter>
+                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
+            </intent-filter>
+            <meta-data
+                android:name="androidx.wear.tiles.PREVIEW"
+                android:resource="@drawable/ic_launcher" />
+        </service>
+
+        <service
+            android:name=".TodoTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_launcher"
+            android:label="Liste HA"
             android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
             <intent-filter>
                 <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />

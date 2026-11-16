@@ -26,9 +26,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Tuile Raccourcis : jusqu'à 9 entités Home Assistant avec leur état réel
- * (allumé en couleur), plus un bouton micro pour Assist, en rangées 3-3-3 ou 3-4-3
- * (cercles plus petits au-delà de 8)
+ * Tuile Raccourcis : jusqu'à 13 entités Home Assistant avec leur état réel
+ * (allumé en couleur), plus un bouton micro pour Assist, en rangées 3-3-3 ou 3-4-3,
+ * puis sur 4 ou 5 rangées jusqu'à 2-3-4-3-2 (cercles plus petits au-delà de 8),
  * comme la tuile de l'appli Home Assistant. Un appui bascule
  * l'entité ; la tuile attend le nouvel état (au plus 2,5 s) avant de se
  * redessiner, et cercle de bleu une entité dont l'appui n'est pas confirmé.
@@ -36,11 +36,13 @@ import java.util.Map;
 public class ShortcutsTileService extends TileService {
 
     private static final String CLICK_PREFIX = "e:";
-    private static final int MAX_ENTITIES = 9;
+    private static final int MAX_ENTITIES = 13;
     /** Cercles de 50 dp jusqu'à 8 boutons, 44 dp au-delà (rangée de 4 au milieu) */
     private static final int CIRCLE_DP = 50;
     private static final int CIRCLE_SMALL_DP = 44;
     private static final int GAP_DP = 5;
+    /** 5 rangées de 44 dp : écart vertical réduit et sans marge, pour tenir dans les 233 dp */
+    private static final int GAP_TIGHT_DP = 3;
     /** Taille des cercles de la tuile en cours de construction */
     private int circleDp = CIRCLE_DP;
 
@@ -122,6 +124,9 @@ public class ShortcutsTileService extends TileService {
         items.add(micButton());
         // Écran rond : rangées plus courtes en haut et en bas
         int[] rows = rowSizes(items.size());
+        // 5 rangées (2-3-4-3-2) : 5 × 44 + 4 × 3 = 232 dp, la hauteur de l'écran, sans marge
+        boolean tight = rows.length >= 5;
+        int vGap = tight ? GAP_TIGHT_DP : GAP_DP;
         int k = 0;
         for (int r = 0; r < rows.length; r++) {
             LayoutElementBuilders.Row.Builder row = new LayoutElementBuilders.Row.Builder();
@@ -131,7 +136,7 @@ public class ShortcutsTileService extends TileService {
                 row.addContent(items.get(k));
             }
             if (r > 0)
-                col.addContent(spacer(GAP_DP));
+                col.addContent(spacer(vGap));
             col.addContent(row.build());
         }
         return new LayoutElementBuilders.Box.Builder()
@@ -139,7 +144,7 @@ public class ShortcutsTileService extends TileService {
                 .setHeight(androidx.wear.protolayout.DimensionBuilders.expand())
                 // Écran rond : le texte ne doit pas toucher le bord
                 .setModifiers(new ModifiersBuilders.Modifiers.Builder()
-                        .setPadding(new ModifiersBuilders.Padding.Builder().setAll(dp(20)).build())
+                        .setPadding(new ModifiersBuilders.Padding.Builder().setAll(dp(tight ? 0 : 20)).build())
                         .build())
                 .addContent(col.build())
                 .build();
@@ -148,6 +153,11 @@ public class ShortcutsTileService extends TileService {
     /** Nombre de cercles par rangée pour n cercles (micro compris) */
     private static int[] rowSizes(int n) {
         switch (n) {
+            // Au-delà de 10 : rangées de 2 ajoutées en haut et en bas, là où le rond est étroit
+            case 14: return new int[] { 2, 3, 4, 3, 2 };
+            case 13: return new int[] { 2, 3, 3, 3, 2 };
+            case 12: return new int[] { 2, 3, 4, 3 };
+            case 11: return new int[] { 2, 3, 3, 3 };
             case 10: return new int[] { 3, 4, 3 };
             case 9: return new int[] { 3, 3, 3 };
             case 8: return new int[] { 2, 3, 3 };

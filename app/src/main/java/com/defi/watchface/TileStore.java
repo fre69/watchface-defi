@@ -41,7 +41,8 @@ import java.util.concurrent.TimeUnit;
 /**
  * Données des tuiles Home Assistant, relayées par l'appli du téléphone (HaLink) :
  * état des entités de la tuile Raccourcis (/ha/tiles) et texte des tuiles
- * Modèle 1 à 4 (/ha/template/1 à 4), Thermostat (/ha/thermostat). Le téléphone ne les envoie que quand elles changent ;
+ * Modèle 1 à 4 (/ha/template/1 à 4), Thermostat (/ha/thermostat), Liste (/ha/todo).
+ * Le téléphone ne les envoie que quand elles changent ;
  * la montre ne parle jamais à Home Assistant.
  */
 public final class TileStore {
@@ -54,6 +55,10 @@ public final class TileStore {
     static final String TILES_GET_PATH = "/ha/tiles/get";
     static final String THERMOSTAT_PATH = "/ha/thermostat";
     static final String CLIMATE_PATH = "/ha/climate";
+    /** Liste de tâches (DataLayer) et commandes de la tuile Liste (message) */
+    static final String TODO_PATH = "/ha/todo";
+    /** Échec d'un ajout, d'un renommage ou d'une suppression : signalé sur la tuile */
+    private static final long TODO_ERROR_MS = 30_000L;
     /**
      * Délai maximal d'une lecture de la DataLayer : sans lui, une pièce jointe pas encore
      * arrivée bloque le fil des tuiles, et plus aucune tuile ne répond
@@ -126,6 +131,54 @@ public final class TileStore {
     }
 
     private static Thermostat thermostat;
+
+    /** Tâche de la tuile Liste */
+    public static final class TodoItem {
+        public final String uid;
+        public final String summary;
+        public final boolean done;
+
+        TodoItem(DataMap m) {
+            uid = m.getString("uid", "");
+            summary = m.getString("summary", "");
+            done = m.getBoolean("done", false);
+        }
+    }
+
+    /** Liste reçue : tâches à faire dans l'ordre, puis quelques tâches faites */
+    public static final class Todo {
+        public final String name;
+        public final String error;
+        public final boolean loaded;
+        public final List<TodoItem> items;
+        /** Tâches faites dans HA (la liste n'en porte que les 20 premières) */
+        public final int doneCount;
+
+        Todo(DataMap m) {
+            name = m.getString("name", "");
+            error = m.getString("error", "");
+            loaded = m.getBoolean("loaded", false);
+            List<TodoItem> list = new ArrayList<>();
+            ArrayList<DataMap> maps = m.getDataMapArrayList("items");
+            if (maps != null)
+                for (DataMap e : maps)
+                    list.add(new TodoItem(e));
+            items = Collections.unmodifiableList(list);
+            int done = 0;
+            for (TodoItem it : list)
+                if (it.done)
+                    done++;
+            doneCount = m.getInt("doneCount", done);
+        }
+    }
+
+    private static Todo todo;
+    /** Tuile Liste : tâches faites affichées (bouton ✓), masquées en quittant la tuile */
+    static volatile boolean todoShowDone;
+    /** Liste entière ouverte (TodoListActivity) : prévenue de chaque changement */
+    static volatile Runnable todoListener;
+    private static String todoErrorText = "";
+    private static long todoErrorAt;
     private static long climatePressedAt;
     private static long climateFailedAt;
     private static long lastRefreshRequest;
@@ -170,6 +223,20 @@ public final class TileStore {
 
     public static synchronized Thermostat getThermostat() {
         return thermostat;
+    }
+
+    public static synchronized Todo getTodo() {
+        return todo;
+    }
+
+    /** Ajout, renommage ou suppression refusé récemment : texte à afficher, sinon null */
+    public static synchronized String todoError() {
+        return System.currentTimeMillis() - todoErrorAt < TODO_ERROR_MS ? todoErrorText : null;
+    }
+
+    /** Clé des appuis en attente pour une tâche (même table que les entités) */
+    static String todoKey(String uid) {
+        return "todo:" + uid;
     }
 
     /** + ou − pas encore confirmé par une nouvelle consigne */
@@ -266,6 +333,17 @@ public final class TileStore {
             changed(ctx, ThermostatTileService.class);
             return true;
         }
+        if (TODO_PATH.equals(path)) {
+            Todo t = new Todo(DataMapItem.fromDataItem(item).getDataMap());
+            synchronized (TileStore.class) {
+                // Le téléphone n'envoie la liste que si elle a changé : les commandes ont abouti
+                pressed.keySet().removeIf(k -> k.startsWith("todo:"));
+                todo = t;
+            }
+            notifyTodo();
+            changed(ctx, TodoTileService.class);
+            return true;
+        }
         if (path != null && path.startsWith(TEMPLATE_PATH)) {
             int slot;
             try {
@@ -359,6 +437,57 @@ public final class TileStore {
         sendToPhone(app, CLIMATE_PATH, (direction < 0 ? "-" : "+").getBytes(StandardCharsets.UTF_8),
                 () -> climateFailed(app));
         return f;
+    }
+
+    /**
+     * Commande de la tuile Liste : « check » ou « uncheck » d'une tâche (la tuile attend
+     * la nouvelle liste, 2,5 s au plus), « add », « rename », « delete » (écran d'édition,
+     * qui n'attend rien : la tuile se redessine à l'arrivée de la liste)
+     */
+    static ListenableFuture<Void> todoCommand(Context ctx, String verb, String uid, String text) {
+        SettableFuture<Void> f = SettableFuture.create();
+        StringBuilder cmd = new StringBuilder(verb).append('\n');
+        cmd.append("add".equals(verb) ? text : uid);
+        if ("rename".equals(verb))
+            cmd.append('\n').append(text);
+        synchronized (TileStore.class) {
+            if (uid != null) {
+                pressed.put(todoKey(uid), System.currentTimeMillis());
+                failed.remove(todoKey(uid));
+            }
+            waiters.add(f);
+        }
+        main.postDelayed(() -> f.set(null), PRESS_WAIT_MS);
+        Context app = ctx.getApplicationContext();
+        String payload = cmd.toString();
+        sendToPhone(app, TODO_PATH, payload.getBytes(StandardCharsets.UTF_8), () -> todoFailed(app, payload));
+        return f;
+    }
+
+    /** Commande refusée (« verbe\nuid ou texte… ») : tâche cerclée de rouge ou message */
+    static void todoFailed(Context ctx, String cmd) {
+        String[] parts = cmd.split("\n", 3);
+        String verb = parts[0], arg = parts.length > 1 ? parts[1] : "";
+        synchronized (TileStore.class) {
+            if ("check".equals(verb) || "uncheck".equals(verb)) {
+                pressed.remove(todoKey(arg));
+                failed.put(todoKey(arg), System.currentTimeMillis());
+            } else {
+                if (!"add".equals(verb))
+                    pressed.remove(todoKey(arg));
+                todoErrorText = "add".equals(verb) ? "« " + arg + " » non ajouté"
+                        : "delete".equals(verb) ? "Suppression refusée" : "Modification refusée";
+                todoErrorAt = System.currentTimeMillis();
+            }
+        }
+        notifyTodo();
+        changed(ctx, TodoTileService.class);
+    }
+
+    private static void notifyTodo() {
+        Runnable l = todoListener;
+        if (l != null)
+            l.run();
     }
 
     static void climateFailed(Context ctx) {

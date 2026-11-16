@@ -19,6 +19,9 @@ import java.nio.charset.StandardCharsets;
  * - /ha/tiles/get : une tuile vient de s'afficher, renvoyer l'état frais.
  * - /ha/climate : « + » ou « - » sur la tuile Thermostat ; échec accusé en
  *   /ha/climate/fail, la nouvelle consigne revient par /ha/thermostat.
+ * - /ha/todo : commande de la tuile Liste (« check\nuid », « add\ntexte »…, cf.
+ *   HaLink.todoCommand) ; échec accusé en /ha/todo/fail (la commande), la liste
+ *   revient par /ha/todo.
  */
 public class HaCommandService extends WearableListenerService {
 
@@ -28,6 +31,7 @@ public class HaCommandService extends WearableListenerService {
     private static final String TILES_GET_PATH = "/ha/tiles/get";
     private static final String CLIMATE_PATH = "/ha/climate";
     private static final String ASSIST_NEW_PATH = "/ha/assist/new";
+    private static final String TODO_PATH = "/ha/todo";
 
     @Override
     public void onMessageReceived(MessageEvent event) {
@@ -51,6 +55,14 @@ public class HaCommandService extends WearableListenerService {
             link.climateStep("-".equals(payload) ? -1 : 1, (ok, text, more) -> {
                 if (!ok)
                     reply(app, node, CLIMATE_PATH + "/fail", text);
+            });
+        } else if (TODO_PATH.equals(path)) {
+            // Texte brut : le trim() de payload couperait un retour à la ligne utile
+            String cmd = new String(event.getData(), StandardCharsets.UTF_8);
+            link.todoCommand(cmd, (ok, text, more) -> {
+                Log.d(TAG, "Liste : " + cmd.replace('\n', ' ') + (ok ? " fait" : " refusé : " + text));
+                if (!ok)
+                    reply(app, node, TODO_PATH + "/fail", cmd);
             });
         } else if (ASSIST_PATH.equals(path)) {
             // « 1 » ou « 0 » (réussite), « 1 » ou « 0 » (Home Assistant attend une suite), texte

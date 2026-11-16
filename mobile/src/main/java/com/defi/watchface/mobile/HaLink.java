@@ -67,6 +67,9 @@ public final class HaLink {
     static final int TEMPLATE_SLOTS = 4;
     /** Entité climate de la tuile Thermostat (« climate.cuisine ») */
     static final String PREF_TILE_CLIMATE = "tile_climate";
+    /** Liste de tâches de la tuile Liste (« todo.courses ») ; réglage absent : DEFAULT_TODO */
+    static final String PREF_TILE_TODO = "tile_todo";
+    static final String DEFAULT_TODO = "todo.liste_de_francois_revillet";
 
     /** Résultat d'une commande venue de la montre (basculer une entité, question à Assist) */
     public interface Callback {
@@ -104,6 +107,10 @@ public final class HaLink {
     private static final String AGENDA_PATH = "/ha/agenda";
     private static final String TILES_PATH = "/ha/tiles";
     private static final String THERMOSTAT_PATH = "/ha/thermostat";
+    private static final String TODO_PATH = "/ha/todo";
+    /** Tâches faites envoyées à la montre (affichées à la demande, pour les décocher) : les
+     * 20 premières dans l'ordre de la liste */
+    private static final int TODO_DONE_MAX = 20;
     /**
      * Consigne demandée par + ou −, pas encore relue dans HA : sert de base aux appuis
      * suivants et s'affiche sur la montre pendant ce délai. Netatmo (climate.cuisine) ne
@@ -199,6 +206,12 @@ public final class HaLink {
      * avant de répondre, une égalité vue pendant l'appel ne confirme donc rien
      */
     private int climateCallsInFlight;
+    private String todoEntity = "";
+    /** Abonnement todo/item/subscribe (-1 : aucun) ; tâches reçues, dans l'ordre de la liste */
+    private int todoSubId = -1;
+    private JSONArray todoItems;
+    private String todoError = "";
+    private String lastTodoSig;
     /** Réponses attendues aux commandes de la montre, par identifiant de message */
     private final Map<Integer, Callback> pendingCommands = new HashMap<>();
     /** Commandes arrivées pendant une coupure, lancées à la reconnexion */
@@ -351,6 +364,7 @@ public final class HaLink {
         generation++;
         authenticated = false;
         java.util.Arrays.fill(templateSubIds, -1);
+        todoSubId = -1;
         failPendingCommands();
         if (socket != null) {
             socket.close(1000, null);
@@ -364,6 +378,7 @@ public final class HaLink {
         socket = null;
         authenticated = false;
         java.util.Arrays.fill(templateSubIds, -1);
+        todoSubId = -1;
         failPendingCommands();
         Log.d(TAG, "Connexion perdue (" + why + "), nouvel essai dans " + reconnectDelay / 1000 + " s");
         setStatus("Déconnecté (" + why + ") — nouvel essai dans " + reconnectDelay / 1000 + " s");
@@ -392,11 +407,16 @@ public final class HaLink {
                         ids.put(e[0]);
                     if (climateEntity.contains("."))
                         ids.put(climateEntity);
+                    todoEntity = prefs().getString(PREF_TILE_TODO, DEFAULT_TODO).trim().toLowerCase(Locale.ROOT);
+                    // Le nom de la liste vient de son état (friendly_name)
+                    if (todoEntity.contains("."))
+                        ids.put(todoEntity);
                     socket.send(new JSONObject()
                             .put("id", 1)
                             .put("type", "subscribe_entities")
                             .put("entity_ids", ids).toString());
                     subscribeTemplates();
+                    subscribeTodo();
                     setStatus("Connecté");
                     fetchAgenda();
                     runWaitingCommands();
@@ -413,6 +433,10 @@ public final class HaLink {
                         onPipelineEvent(msg.optInt("id"), ev);
                         break;
                     }
+                    if (msg.optInt("id") == todoSubId) {
+                        onTodo(ev);
+                        break;
+                    }
                     int slot = templateSlot(msg.optInt("id"));
                     if (slot >= 0) {
                         onTemplate(slot, ev);
@@ -421,6 +445,7 @@ public final class HaLink {
                     applyEvent(ev);
                     publishTiles();
                     publishThermostat();
+                    publishTodo();
                     publishWeather();
                     publishCar();
                     // Agenda modifié (événement ajouté, commencé, fini) : aussitôt
@@ -442,6 +467,12 @@ public final class HaLink {
                             Callback cb = pendingPipelines.remove(msg.optInt("id"));
                             cb.done(false, err != null ? err.optString("message", "Refusé") : "Refusé", false);
                         }
+                    } else if (msg.optInt("id") == todoSubId && !msg.optBoolean("success", true)) {
+                        // Entité absente ou qui n'est pas une liste de tâches
+                        JSONObject err = msg.optJSONObject("error");
+                        Log.w(TAG, "Liste refusée : " + err);
+                        todoError = err != null ? err.optString("message", "Refusée") : "Refusée";
+                        publishTodo();
                     } else if (!msg.optBoolean("success", true)) {
                         Log.w(TAG, "Abonnement refusé : " + msg.optJSONObject("error"));
                     }
@@ -781,10 +812,17 @@ public final class HaLink {
     // Tuiles de la montre : Raccourcis (état des entités choisies) et Modèle
     // =========================================================================
 
-    /** Lignes « entity_id » ou « entity_id | Nom » (virgule acceptée) ; lignes vides et # ignorées */
     private List<String[]> readTileEntities() {
+        return parseTileEntities(prefs().getString(PREF_TILE_ENTITIES, ""));
+    }
+
+    /**
+     * Lignes « entity_id » ou « entity_id | Nom » (virgule acceptée) ; lignes vides et # ignorées.
+     * Rend { entity_id, nom choisi (peut être vide) } ; l'écran de réglage s'en sert aussi
+     */
+    static List<String[]> parseTileEntities(String text) {
         List<String[]> list = new ArrayList<>();
-        for (String line : prefs().getString(PREF_TILE_ENTITIES, "").split("\n")) {
+        for (String line : text.split("\n")) {
             line = line.trim();
             if (line.isEmpty() || line.startsWith("#"))
                 continue;
@@ -950,7 +988,148 @@ public final class HaLink {
                 lastTemplateSent[i] = null;
                 publishTemplate(i, currentTemplate[i]);
             }
+            lastTodoSig = null;
+            publishTodo();
         });
+    }
+
+    // =========================================================================
+    // Tuile Liste : tâches d'une entité todo (ajouter, renommer, cocher, supprimer)
+    // =========================================================================
+
+    /**
+     * todo/item/subscribe : Home Assistant renvoie la liste entière à chaque changement
+     * (l'état d'une entité todo n'est que le nombre de tâches à faire)
+     */
+    private void subscribeTodo() throws JSONException {
+        todoItems = null;
+        todoError = "";
+        if (!todoEntity.contains(".")) {
+            publishTodo();
+            return;
+        }
+        todoSubId = nextId++;
+        socket.send(new JSONObject()
+                .put("id", todoSubId)
+                .put("type", "todo/item/subscribe")
+                .put("entity_id", todoEntity).toString());
+    }
+
+    private void onTodo(JSONObject ev) {
+        todoItems = ev.optJSONArray("items");
+        todoError = "";
+        publishTodo();
+    }
+
+    /**
+     * Tâches à faire dans l'ordre de la liste, puis quelques tâches faites (pour les
+     * décocher) ; envoi seulement si quelque chose a changé
+     */
+    private void publishTodo() {
+        if (!authenticated)
+            return;
+        ArrayList<DataMap> list = new ArrayList<>();
+        String name = todoEntity.contains(".") ? attrs(todoEntity).optString("friendly_name", "") : "";
+        StringBuilder sig = new StringBuilder(todoEntity).append('|').append(todoError)
+                .append('|').append(name).append('|').append(todoItems != null);
+        int todoDoneCount = 0;
+        if (todoItems != null) {
+            List<JSONObject> done = new ArrayList<>();
+            for (int i = 0; i < todoItems.length(); i++) {
+                JSONObject it = todoItems.optJSONObject(i);
+                if (it == null)
+                    continue;
+                if ("completed".equals(it.optString("status")))
+                    done.add(it);
+                else
+                    list.add(todoMap(it, false));
+            }
+            todoDoneCount = done.size();
+            for (int i = 0; i < Math.min(done.size(), TODO_DONE_MAX); i++)
+                list.add(todoMap(done.get(i), true));
+            for (DataMap m : list)
+                sig.append('|').append(m.getString("uid")).append(m.getBoolean("done"))
+                        .append(m.getString("summary"));
+        }
+        sig.append('|').append(todoDoneCount);
+        if (sig.toString().equals(lastTodoSig))
+            return;
+        PutDataMapRequest req = PutDataMapRequest.create(TODO_PATH);
+        DataMap m = req.getDataMap();
+        m.putString("entity", todoEntity);
+        m.putString("name", name);
+        m.putString("error", todoError);
+        m.putBoolean("loaded", todoItems != null);
+        m.putInt("doneCount", todoDoneCount);
+        m.putDataMapArrayList("items", list);
+        m.putLong("sentAt", System.currentTimeMillis());
+        if (send(req, tilesLive())) {
+            lastTodoSig = sig.toString();
+            Log.d(TAG, "Liste envoyée : " + list.size() + " tâche(s)");
+        }
+    }
+
+    private static DataMap todoMap(JSONObject it, boolean done) {
+        DataMap m = new DataMap();
+        m.putString("uid", it.optString("uid", it.optString("summary")));
+        m.putString("summary", it.optString("summary"));
+        m.putBoolean("done", done);
+        return m;
+    }
+
+    /**
+     * Commande de la tuile Liste : « check|uncheck|delete\nuid », « add\ntexte »,
+     * « rename\nuid\ntexte ». La nouvelle liste revient par l'abonnement.
+     */
+    public void todoCommand(String payload, Callback cb) {
+        handler.post(() -> whenConnected(() -> {
+            if (!todoEntity.contains(".")) {
+                cb.done(false, "Liste non réglée", false);
+                return;
+            }
+            tilesLiveUntil = Math.max(tilesLiveUntil, System.currentTimeMillis() + LIVE_AFTER_PRESS_MS);
+            String[] parts = payload.split("\n", 3);
+            String verb = parts[0];
+            String arg = parts.length > 1 ? parts[1].trim() : "";
+            String service;
+            JSONObject data = new JSONObject();
+            try {
+                switch (verb) {
+                    case "check":
+                    case "uncheck":
+                        service = "update_item";
+                        data.put("item", arg).put("status", "check".equals(verb) ? "completed" : "needs_action");
+                        break;
+                    case "rename":
+                        service = "update_item";
+                        data.put("item", arg).put("rename", parts.length > 2 ? parts[2].trim() : "");
+                        break;
+                    case "add":
+                        service = "add_item";
+                        data.put("item", arg);
+                        break;
+                    case "delete":
+                        service = "remove_item";
+                        data.put("item", new JSONArray().put(arg));
+                        break;
+                    default:
+                        cb.done(false, "Commande inconnue", false);
+                        return;
+                }
+                if (arg.isEmpty() || ("rename".equals(verb) && data.optString("rename").isEmpty())) {
+                    cb.done(false, "Texte vide", false);
+                    return;
+                }
+                sendCommand(new JSONObject()
+                        .put("type", "call_service")
+                        .put("domain", "todo")
+                        .put("service", service)
+                        .put("target", new JSONObject().put("entity_id", todoEntity))
+                        .put("service_data", data), cb);
+            } catch (JSONException e) {
+                cb.done(false, "Commande illisible", false);
+            }
+        }, cb));
     }
 
     /** Termes français de hvac_action, comme la tuile de l'appli Home Assistant */
