@@ -11,6 +11,8 @@ fait tout le travail réseau ; la montre ne parle jamais à Home Assistant ni à
   jour, vignette de la dernière voiture passée sur le chemin (photo en grand à l'appui).
 - **Notifications du téléphone** dans une bulle du cadran, avec réponses rapides (Oui / Non / OK /
   dictée) et allumage de l'écran à l'arrivée.
+- **Réveil du téléphone** (Google Horloge) : quand l'alarme sonne, la montre vibre et affiche l'heure
+  en gros avec un seul gros bouton « Arrêter » ; un appui n'importe où sur l'écran arrête l'alarme.
 - **Tuiles Home Assistant** : Raccourcis (13 entités avec leur état réel et leur icône, + micro),
   Modèle 1 à 4 (texte d'un modèle HA mis en forme : horaires d'école et bus des enfants, imprimante
   3D), Thermostat (consigne − / +), Liste (tâches d'une liste HA : ajouter, modifier, cocher).

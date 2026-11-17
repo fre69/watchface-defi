@@ -16,10 +16,19 @@ import java.util.List;
  * fois : par le téléphone et en notification locale. Les deux sont fusionnés
  * en une seule entrée, qui garde l'action de la locale (ouvrir l'appli de la
  * montre pour répondre).
+ *
+ * Une alarme qui sonne sur le téléphone s'ouvre d'elle-même, avec ses boutons
+ * (« Répéter », « Arrêter »), et reste affichée jusqu'à son arrêt.
  */
 public final class NotificationHolder {
     /** Durée d'affichage de la bulle (ms), sauf fermeture plus tôt */
     public static final long DISPLAY_DURATION_MS = 60_000;
+    /**
+     * Alarme qui sonne sur le téléphone : la bulle reste ouverte jusqu'à son arrêt
+     * (élément supprimé), au plus ce délai si la suppression n'arrive jamais
+     * (Google Horloge coupe d'elle-même la sonnerie au bout de 10 min par défaut)
+     */
+    public static final long ALARM_DURATION_MS = 15 * 60_000L;
     /** Au-delà, les plus anciennes sont oubliées */
     private static final int MAX_PENDING = 20;
     /** Un doublon arrivé après la lecture de son jumeau est ignoré pendant ce délai */
@@ -48,11 +57,18 @@ public final class NotificationHolder {
         String replyId;
         /** Lue (bulle ouverte) à cette date, 0 : pas encore */
         long readAt;
+        /** Alarme qui sonne : libellés de ses boutons (« Répéter », « Arrêter »), sinon null */
+        final String[] actions;
+        /** Chemin de la notification du téléphone, pour en déclencher un bouton */
+        final String actionId;
 
         Entry(String key, String appName, String title, String text, Bitmap icon,
-                Bitmap picture, PendingIntent contentIntent, String replyId) {
+                Bitmap picture, PendingIntent contentIntent, String replyId,
+                String[] actions, String actionId) {
             keys.add(key);
             this.replyId = replyId;
+            this.actions = actions;
+            this.actionId = actionId;
             this.appName = appName;
             this.title = title;
             this.text = text;
@@ -63,7 +79,7 @@ public final class NotificationHolder {
 
         /** Même message venu de l'autre côté (téléphone / montre) */
         boolean isTwin(String app, String t, String txt) {
-            return appName.equals(app) && title.equals(t) && text.equals(txt);
+            return actions == null && appName.equals(app) && title.equals(t) && text.equals(txt);
         }
 
         /** Complète l'entrée avec ce que la copie apporte en plus */
@@ -111,12 +127,31 @@ public final class NotificationHolder {
             if (twin != null) {
                 twin.merge(k, icn, pic, intent, replyId);
             } else {
-                pending.add(0, new Entry(k, app, t, txt, icn, pic, intent, replyId));
-                while (pending.size() > MAX_PENDING)
-                    pending.remove(pending.size() - 1);
+                add(new Entry(k, app, t, txt, icn, pic, intent, replyId, null, null));
             }
         }
         notifyChange();
+    }
+
+    /**
+     * Alarme qui sonne sur le téléphone : ouverte aussitôt dans la bulle, à la
+     * place de celle affichée, avec ses boutons. actionId : chemin de la
+     * notification du téléphone, renvoyé avec le bouton choisi
+     */
+    public static void setAlarm(String k, String app, String t, String txt, Bitmap icn,
+            String[] actions, String actionId) {
+        synchronized (NotificationHolder.class) {
+            removeKey(k);
+            add(new Entry(k, app, t, txt, icn, null, null, null, actions, actionId));
+            open();
+        }
+        notifyChange();
+    }
+
+    private static void add(Entry e) {
+        pending.add(0, e);
+        while (pending.size() > MAX_PENDING)
+            pending.remove(pending.size() - 1);
     }
 
     /** Ouvre la plus récente dans la bulle (appui sur la pastille ou le bouton suivante) */
@@ -211,7 +246,43 @@ public final class NotificationHolder {
 
     /** Bulle ouverte et pas encore expirée */
     public static synchronized boolean isActive() {
-        return shown != null && (System.currentTimeMillis() - openedAt) < DISPLAY_DURATION_MS;
+        return shown != null && (System.currentTimeMillis() - openedAt) < duration();
+    }
+
+    /** Alarme qui sonne affichée dans la bulle */
+    public static synchronized boolean isAlarmShown() {
+        return isActive() && shown.actions != null;
+    }
+
+    /** Boutons de l'alarme affichée, null : pas une alarme */
+    public static synchronized String[] getActions() {
+        return shown != null ? shown.actions : null;
+    }
+
+    /**
+     * Rang du bouton qui arrête l'alarme affichée (« Arrêter », « Stop »,
+     * « Ignorer »…), sinon le dernier (Google Horloge : Répéter, Arrêter) ;
+     * -1 : pas une alarme. « Répéter » n'est pas proposé sur la montre
+     */
+    public static synchronized int getStopIndex() {
+        if (shown == null || shown.actions == null || shown.actions.length == 0)
+            return -1;
+        for (int i = 0; i < shown.actions.length; i++) {
+            String a = shown.actions[i].toLowerCase(java.util.Locale.ROOT);
+            if (a.startsWith("arr") || a.startsWith("stop") || a.startsWith("ignor")
+                    || a.startsWith("dismiss") || a.startsWith("désactiv"))
+                return i;
+        }
+        return shown.actions.length - 1;
+    }
+
+    /** Chemin de l'alarme affichée sur le téléphone, null : pas une alarme */
+    public static synchronized String getActionId() {
+        return shown != null ? shown.actionId : null;
+    }
+
+    private static long duration() {
+        return shown != null && shown.actions != null ? ALARM_DURATION_MS : DISPLAY_DURATION_MS;
     }
 
     public static synchronized int getPendingCount() {
@@ -228,7 +299,7 @@ public final class NotificationHolder {
         if (shown == null)
             return 0f;
         long elapsed = System.currentTimeMillis() - openedAt;
-        return Math.max(0f, 1f - elapsed / (float) DISPLAY_DURATION_MS);
+        return Math.max(0f, 1f - elapsed / (float) duration());
     }
 
     // --- Notification affichée dans la bulle ---

@@ -25,13 +25,13 @@ public class DataLayerListenerService extends WearableListenerService {
     /** Une notification du téléphone par élément : /notification/<clé encodée> */
     private static final String NOTIF_PREFIX = "/notification/";
 
-    /** Accusés du téléphone : réponse rapide, appui sur la tuile Raccourcis, réponse d'Assist */
+    /** Accusés du téléphone : réponse rapide, bouton d'alarme, appui sur la tuile Raccourcis, réponse d'Assist */
     @Override
     public void onMessageReceived(MessageEvent event) {
         String path = event.getPath();
-        if ((ReplySender.REPLY_PATH + "/ok").equals(path))
+        if ((ReplySender.REPLY_PATH + "/ok").equals(path) || (ReplySender.ACTION_PATH + "/ok").equals(path))
             NotificationHolder.replyResult(true);
-        else if ((ReplySender.REPLY_PATH + "/fail").equals(path))
+        else if ((ReplySender.REPLY_PATH + "/fail").equals(path) || (ReplySender.ACTION_PATH + "/fail").equals(path))
             NotificationHolder.replyResult(false);
         else if ((TileStore.ACTION_PATH + "/fail").equals(path))
             TileStore.actionFailed(this, new String(event.getData(), StandardCharsets.UTF_8));
@@ -63,6 +63,9 @@ public class DataLayerListenerService extends WearableListenerService {
                 if (notif) {
                     Log.d(TAG, "Notification removed on phone: " + key);
                     NotificationHolder.clearPending(key);
+                    // Alarme arrêtée sur le téléphone (ou depuis la bulle) : fin de la vibration
+                    if (!NotificationHolder.isAlarmShown())
+                        AlarmVibrator.stop();
                 }
                 continue;
             }
@@ -84,6 +87,18 @@ public class DataLayerListenerService extends WearableListenerService {
             Log.d(TAG, "Received from phone: " + appName + " / " + title + " / " + text);
 
             Bitmap icon = loadAssetBitmap(map.getAsset("icon"));
+
+            // Alarme qui sonne : bulle ouverte d'office avec ses boutons, vibration,
+            // écran allumé même en Ne pas déranger (une alarme le traverse)
+            java.util.ArrayList<String> actions = map.getStringArrayList("actions");
+            if (map.getBoolean("alarm", false) && actions != null && !actions.isEmpty()) {
+                NotificationHolder.setAlarm(key, appName, title, text, icon,
+                        actions.toArray(new String[0]), path.substring(NOTIF_PREFIX.length()));
+                ScreenWaker.wake(this, true);
+                AlarmVibrator.start(this);
+                continue;
+            }
+
             Bitmap picture = loadAssetBitmap(map.getAsset("picture"));
 
             // Réponse possible : la bulle propose Oui / Non / OK / ✎ (envoyés par le téléphone)

@@ -22,13 +22,19 @@ final class ScreenWaker {
 
     @SuppressWarnings("deprecation") // SCREEN_BRIGHT_WAKE_LOCK : seul moyen d'allumer depuis un service
     static void wake(Context ctx) {
+        wake(ctx, false);
+    }
+
+    /** alarm : alarme du téléphone qui sonne, l'écran s'allume même en Ne pas déranger */
+    static void wake(Context ctx, boolean alarm) {
         PowerManager pm = ctx.getSystemService(PowerManager.class);
         if (pm == null || pm.isInteractive())
             return;
 
         // Ne pas déranger / mode coucher : la bulle attend, l'écran reste éteint
         NotificationManager nm = ctx.getSystemService(NotificationManager.class);
-        if (nm != null && nm.getCurrentInterruptionFilter() != NotificationManager.INTERRUPTION_FILTER_ALL) {
+        if (!alarm && nm != null
+                && nm.getCurrentInterruptionFilter() != NotificationManager.INTERRUPTION_FILTER_ALL) {
             Log.d(TAG, "Ne pas déranger actif : écran laissé éteint");
             return;
         }

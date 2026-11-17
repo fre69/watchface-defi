@@ -266,6 +266,21 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
                     renderer.invalidate();
                     return;
                 }
+                // Alarme du téléphone : tout l'écran est le bouton « Arrêter » (au
+                // réveil, pas de précision) ; l'appui coupe aussi la vibration. Après
+                // un échec, un nouvel appui réessaie
+                String[] actions = NotificationHolder.getActions();
+                if (actions != null) {
+                    AlarmVibrator.stop();
+                    int stop = NotificationHolder.getStopIndex();
+                    int state = NotificationHolder.getReplyState();
+                    if (stop >= 0 && (state == NotificationHolder.REPLY_NONE
+                            || state == NotificationHolder.REPLY_FAILED))
+                        ReplySender.sendAction(DefiWatchFaceService.this,
+                                NotificationHolder.getActionId(), stop, actions[stop]);
+                    renderer.invalidate();
+                    return;
+                }
                 // Réponse rapide : Oui / Non / OK envoyés par le téléphone, ✎ saisie libre
                 int chip = renderer.replyChipAt(tapEvent.getXPos(), tapEvent.getYPos());
                 if (chip >= 0) {
@@ -390,6 +405,11 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         private final Paint pCloseRing = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint pChip = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final TextPaint pReplyState = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint pAlarmTime = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final TextPaint pAlarmLabel = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint pAlarmBtn = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint pAlarmBtnRing = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint pAlarmBtnText = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint pBadgeDot = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint pBadgeCount = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint pBitmap = new Paint(Paint.FILTER_BITMAP_FLAG);
@@ -417,6 +437,12 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         private static final float CHIP_W = 0.17f;
         private static final float CHIP_H = 0.085f;
         private static final float CHIP_GAP = 0.025f;
+        // Écran d'alarme du téléphone : heure, nom de l'alarme, gros bouton « Arrêter »
+        private static final float ALARM_TIME_Y = 0.31f;
+        private static final float ALARM_LABEL_Y = 0.405f;
+        private static final float ALARM_BTN_Y = 0.675f;
+        private static final float ALARM_BTN_RADIUS = 0.20f;
+        private static final int COL_ALARM_BTN = 0xFF3A2670;
         /** « Envoyé » reste affiché ce temps, puis la bulle passe à la suite */
         private static final long REPLY_SENT_SHOWN_MS = 2_500L;
         // Bande de l'heure, sensible à l'appui tant qu'une notification attend
@@ -1001,6 +1027,10 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
 
         // --- NOTIFICATION MODE ---
         private void drawNotificationMode(Canvas c, ZonedDateTime z) {
+            if (NotificationHolder.getActions() != null) {
+                drawAlarmMode(c, z);
+                return;
+            }
             // Heure en petit en haut
             String hhmm = fmt("%02d:%02d", z.getHour(), z.getMinute());
             c.drawText(hhmm, CX, y(0.12f), pNotifTime);
@@ -1047,6 +1077,56 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             drawCloseButton(c, NotificationHolder.getRemaining(), more > 0);
             if (more > 0)
                 c.drawText("+" + more, CX + W * CLOSE_RADIUS * 2.6f, y(CLOSE_Y) + 9, pNotifApp);
+        }
+
+        /**
+         * Alarme qui sonne sur le téléphone : heure en gros, nom de l'alarme, et un
+         * seul gros bouton « Arrêter » (tout l'écran l'actionne). « Répéter »
+         * n'est pas proposé. Le bouton montre l'envoi (…), l'arrêt (✓) ou l'échec
+         */
+        private void drawAlarmMode(Canvas c, ZonedDateTime z) {
+            c.drawText(fmt("%02d:%02d", z.getHour(), z.getMinute()), CX, y(ALARM_TIME_Y), pAlarmTime);
+            String label = NotificationHolder.getTitle();
+            if (!label.isEmpty())
+                c.drawText(TextUtils.ellipsize(label, pAlarmLabel, W * 0.7f,
+                        TextUtils.TruncateAt.END).toString(), CX, y(ALARM_LABEL_Y), pAlarmLabel);
+
+            String[] actions = NotificationHolder.getActions();
+            int stop = NotificationHolder.getStopIndex();
+            String txt = stop >= 0 ? actions[stop] : "Arrêter";
+            int fill = COL_ALARM_BTN, ring = COL_VIOLET;
+            int state = NotificationHolder.getReplyState();
+            if (state == NotificationHolder.REPLY_SENDING) {
+                txt = "\u2026";
+                fill = COL_SEP;
+            } else if (state == NotificationHolder.REPLY_SENT) {
+                txt = "\u2713";
+                ring = COL_STEPS;
+                // Arrêtée : la suppression de l'élément ferme l'écran ; sinon, retour au cadran
+                long left = REPLY_SENT_SHOWN_MS
+                        - (System.currentTimeMillis() - NotificationHolder.getReplyAt());
+                if (left <= 0) {
+                    NotificationHolder.next();
+                    postInvalidate();
+                } else {
+                    uiHandler.postDelayed(this::postInvalidate, left + 50);
+                }
+            } else if (state == NotificationHolder.REPLY_FAILED) {
+                txt = "Réessayer";
+                ring = COL_HEALTH;
+                uiHandler.postDelayed(this::postInvalidate, 3_100L);
+            }
+            float cy = y(ALARM_BTN_Y), r = W * ALARM_BTN_RADIUS;
+            pAlarmBtn.setColor(fill);
+            pAlarmBtnRing.setColor(ring);
+            c.drawCircle(CX, cy, r, pAlarmBtn);
+            c.drawCircle(CX, cy, r, pAlarmBtnRing);
+            // Libellé réduit s'il déborde du rond (« Réessayer », autre langue)
+            pAlarmBtnText.setTextSize(42);
+            float tw = pAlarmBtnText.measureText(txt);
+            if (tw > r * 1.7f)
+                pAlarmBtnText.setTextSize(42 * r * 1.7f / tw);
+            c.drawText(txt, CX, cy + pAlarmBtnText.getTextSize() * 0.36f, pAlarmBtnText);
         }
 
         /** Boutons Oui / Non / OK / ✎, ou l'état de la réponse partie */
@@ -1212,6 +1292,11 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             setupStroke(pCloseX, COL_WHITE, 4);
             setupStroke(pCloseRing, COL_VIOLET, 4);
             setupText(pChip, COL_WHITE, 24, bold);
+            setupText(pAlarmTime, COL_WHITE, 104, bold);
+            setupText(pAlarmLabel, COL_VIOLET, 28, bold);
+            pAlarmBtn.setStyle(Paint.Style.FILL);
+            setupStroke(pAlarmBtnRing, COL_VIOLET, 6);
+            setupText(pAlarmBtnText, COL_WHITE, 42, bold);
             setupText(pReplyState, COL_GREY, 24, bold);
             pBadgeDot.setColor(COL_VIOLET);
             setupText(pBadgeCount, COL_BG, 18, bold);

@@ -9,28 +9,45 @@ import com.google.android.gms.wearable.WearableListenerService;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Réponse rapide choisie sur la montre (/reply : « chemin de la notif\ntexte ») :
- * envoyée par l'action « Répondre » de la notification d'origine, puis accusée
- * à la montre (/reply/ok ou /reply/fail).
+ * Gestes de la bulle de la montre sur une notification du téléphone, accusés à
+ * la montre (chemin + /ok ou /fail, même contenu) :
+ * - /reply : « chemin de la notif\ntexte », réponse rapide envoyée par l'action
+ *   « Répondre » de la notification d'origine ;
+ * - /action : « chemin de la notif\nrang\nlibellé », bouton d'une alarme qui
+ *   sonne (« Répéter », « Arrêter ») déclenché comme dans le volet.
  */
 public class ReplyListenerService extends WearableListenerService {
 
     private static final String TAG = "DefiReply";
     private static final String REPLY_PATH = "/reply";
+    private static final String ACTION_PATH = "/action";
 
     @Override
     public void onMessageReceived(MessageEvent event) {
-        if (!REPLY_PATH.equals(event.getPath()))
-            return;
+        String path = event.getPath();
         String payload = new String(event.getData(), StandardCharsets.UTF_8);
-        int nl = payload.indexOf('\n');
+        String[] parts = payload.split("\n", 3);
         boolean ok = false;
-        if (nl > 0) {
-            String key = PhoneNotificationListenerService.keyFromPathId(payload.substring(0, nl));
-            ok = PhoneNotificationListenerService.reply(key, payload.substring(nl + 1));
-            Log.d(TAG, "Reply " + (ok ? "sent" : "failed") + " for " + key);
+        if (REPLY_PATH.equals(path)) {
+            if (parts.length >= 2 && !parts[0].isEmpty()) {
+                String key = PhoneNotificationListenerService.keyFromPathId(parts[0]);
+                ok = PhoneNotificationListenerService.reply(key, payload.substring(parts[0].length() + 1));
+                Log.d(TAG, "Reply " + (ok ? "sent" : "failed") + " for " + key);
+            }
+        } else if (ACTION_PATH.equals(path)) {
+            if (parts.length == 3) {
+                String key = PhoneNotificationListenerService.keyFromPathId(parts[0]);
+                try {
+                    ok = PhoneNotificationListenerService.runAction(key, Integer.parseInt(parts[1]), parts[2]);
+                } catch (NumberFormatException e) {
+                    ok = false;
+                }
+                Log.d(TAG, "Action « " + parts[2] + " » " + (ok ? "done" : "failed") + " for " + key);
+            }
+        } else {
+            return;
         }
         Wearable.getMessageClient(this).sendMessage(event.getSourceNodeId(),
-                REPLY_PATH + (ok ? "/ok" : "/fail"), event.getData());
+                path + (ok ? "/ok" : "/fail"), event.getData());
     }
 }

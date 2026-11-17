@@ -34,7 +34,7 @@
             </intent-filter>
         </service>
 
-        <!-- Réponses rapides choisies sur la montre -->
+        <!-- Réponses rapides et boutons d'alarme choisis sur la montre -->
         <service
             android:name=".ReplyListenerService"
             android:exported="true">
@@ -44,6 +44,10 @@
                     android:scheme="wear"
                     android:host="*"
                     android:path="/reply" />
+                <data
+                    android:scheme="wear"
+                    android:host="*"
+                    android:path="/action" />
             </intent-filter>
         </service>
 

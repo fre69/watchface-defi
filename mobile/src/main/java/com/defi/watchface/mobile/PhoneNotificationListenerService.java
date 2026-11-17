@@ -80,9 +80,11 @@ public class PhoneNotificationListenerService extends NotificationListenerServic
         if (sbn.getPackageName().equals(getPackageName())) return;
 
         Notification notif = sbn.getNotification();
+        // Alarme qui sonne : notification de service, mais relayée avec ses boutons
+        boolean alarm = isRingingAlarm(notif);
         // Skip service notifications (music players, apps running in background...)
         // and group summaries (duplicates of the individual notifications)
-        if ((notif.flags & (Notification.FLAG_ONGOING_EVENT | Notification.FLAG_FOREGROUND_SERVICE
+        if (!alarm && (notif.flags & (Notification.FLAG_ONGOING_EVENT | Notification.FLAG_FOREGROUND_SERVICE
                 | Notification.FLAG_NO_CLEAR | Notification.FLAG_GROUP_SUMMARY)) != 0) return;
 
         Bundle extras = notif.extras;
@@ -108,6 +110,10 @@ public class PhoneNotificationListenerService extends NotificationListenerServic
         String message = lastMessage(extras);
         if (message != null)
             text = message;
+        // « mar. 07:00 • Balayez pour arrêter » : la consigne vaut pour le téléphone
+        int hint = text.indexOf(" • ");
+        if (alarm && hint > 0)
+            text = text.substring(0, hint);
 
         // Picture
         Bitmap picture = null;
@@ -135,17 +141,75 @@ public class PhoneNotificationListenerService extends NotificationListenerServic
                     // teinte) : sans teinte, celle de Messages sort noire sur noir
                     d.setTint(0xFFFFFFFF);
                     d.draw(c);
+                    // Icône pleine (Google Horloge donne son icône d'appli) : teintée,
+                    // ce serait un carré blanc ; gardée en couleurs
+                    if (isOpaque(iconBmp)) {
+                        iconBmp.eraseColor(0);
+                        d.setTintList(null);
+                        d.draw(c);
+                    }
                 }
             } catch (Exception e) {
                 Log.w(TAG, "Failed to load icon", e);
             }
         }
 
+        // Boutons de l'alarme (« Répéter », « Arrêter ») : la montre renvoie le choisi
+        ArrayList<String> actions = null;
+        if (alarm) {
+            actions = new ArrayList<>();
+            for (Notification.Action a : notif.actions)
+                actions.add(a.title != null ? a.title.toString() : "");
+        }
+
         Log.d(TAG, "Sending to watch: " + appName + " / " + title + " / " + text
-                + " picture=" + (picture != null));
+                + " picture=" + (picture != null) + (alarm ? " alarm, category=" + notif.category
+                + " channel=" + notif.getChannelId() + " actions=" + actions : ""));
 
         sendToWatch(sbn.getKey(), appName, title, text, iconBmp, picture,
-                replyAction(notif) != null);
+                replyAction(notif) != null, actions);
+    }
+
+    /**
+     * Alarme (réveil) qui sonne : Google Horloge, canal « Firing », écran plein
+     * (fullScreenIntent), boutons « Répéter » et « Arrêter ». Elle porte
+     * FLAG_LOCAL_ONLY : OHealth ne la relaie pas à la montre, contrairement à
+     * l'horloge OnePlus qu'il connaît. Un minuteur, en cours comme en sonnerie,
+     * n'a pas d'écran plein (canal « Timers v2 », ni titre ni texte) : écarté
+     */
+    static boolean isRingingAlarm(Notification n) {
+        return (Notification.CATEGORY_ALARM.equals(n.category) || "Firing".equals(n.getChannelId()))
+                && n.fullScreenIntent != null
+                && (n.flags & (Notification.FLAG_ONGOING_EVENT | Notification.FLAG_FOREGROUND_SERVICE
+                        | Notification.FLAG_NO_CLEAR)) != 0
+                && n.actions != null && n.actions.length > 0;
+    }
+
+    /**
+     * Bouton choisi sur la montre pour une alarme qui sonne : son action est
+     * déclenchée comme par un appui dans le volet du téléphone. Le libellé doit
+     * correspondre (l'alarme a pu être remplacée entre-temps). false : alarme
+     * arrêtée ou disparue, ou écoute débranchée
+     */
+    static boolean runAction(String key, int index, String title) {
+        PhoneNotificationListenerService s = instance;
+        if (s == null)
+            return false;
+        StatusBarNotification[] found = s.getActiveNotifications(new String[] { key });
+        if (found == null || found.length == 0 || found[0] == null)
+            return false;
+        Notification.Action[] actions = found[0].getNotification().actions;
+        if (actions == null || index < 0 || index >= actions.length
+                || actions[index].actionIntent == null
+                || !title.equals(String.valueOf(actions[index].title)))
+            return false;
+        try {
+            actions[index].actionIntent.send();
+            return true;
+        } catch (PendingIntent.CanceledException e) {
+            Log.w(TAG, "Alarm action cancelled", e);
+            return false;
+        }
     }
 
     @Override
@@ -223,7 +287,8 @@ public class PhoneNotificationListenerService extends NotificationListenerServic
     }
 
     private void sendToWatch(String key, String appName, String title, String text,
-                             Bitmap icon, Bitmap picture, boolean canReply) {
+                             Bitmap icon, Bitmap picture, boolean canReply,
+                             ArrayList<String> actions) {
         new Thread(() -> {
             try {
                 PutDataMapRequest mapRequest = PutDataMapRequest.create(itemPath(key));
@@ -231,7 +296,14 @@ public class PhoneNotificationListenerService extends NotificationListenerServic
                 mapRequest.getDataMap().putString("title", title);
                 mapRequest.getDataMap().putString("text", text);
                 mapRequest.getDataMap().putBoolean("canReply", canReply);
-                mapRequest.getDataMap().putLong("timestamp", System.currentTimeMillis());
+                if (actions != null) {
+                    // Alarme : sans horodatage, la même notification republiée ne
+                    // change pas l'élément et ne relance pas la vibration
+                    mapRequest.getDataMap().putBoolean("alarm", true);
+                    mapRequest.getDataMap().putStringArrayList("actions", actions);
+                } else {
+                    mapRequest.getDataMap().putLong("timestamp", System.currentTimeMillis());
+                }
 
                 if (icon != null) {
                     mapRequest.getDataMap().putAsset("icon", bitmapToAsset(icon, true));
@@ -304,6 +376,17 @@ public class PhoneNotificationListenerService extends NotificationListenerServic
             bitmap.compress(Bitmap.CompressFormat.JPEG, 70, bos);
         }
         return Asset.createFromBytes(bos.toByteArray());
+    }
+
+    /** Plus de 85 % de pixels opaques : une image, pas une silhouette */
+    private static boolean isOpaque(Bitmap bmp) {
+        int[] px = new int[bmp.getWidth() * bmp.getHeight()];
+        bmp.getPixels(px, 0, bmp.getWidth(), 0, 0, bmp.getWidth(), bmp.getHeight());
+        int opaque = 0;
+        for (int p : px)
+            if ((p >>> 24) > 0xC0)
+                opaque++;
+        return opaque > px.length * 0.85f;
     }
 
     private Bitmap scaleBitmap(Bitmap src, int maxSize) {

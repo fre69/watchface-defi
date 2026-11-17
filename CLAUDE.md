@@ -58,7 +58,8 @@ et les envoie à la montre via la **Wearable DataLayer API** (`play-services-wea
   2026-10-19 avec Messages (SMS). Une notif mise à jour dont le dernier message est le sien (sans
   `sender` ni `sender_person`) n'est pas relayée : c'est l'écho de sa réponse
 - Les petites icônes sont teintées en blanc côté téléphone (silhouettes : celle de Messages sortait
-  noire sur noir)
+  noire sur noir), sauf une icône pleine (> 85 % opaque) gardée en couleurs : Google Horloge donne
+  son icône d'appli, qui sortait en carré blanc
 - **Doublons montre / téléphone** : une appli installée des deux côtés envoie le même message deux
   fois (WhatsApp, désinstallé de la montre le 2026-10-19 : les réponses rapides le remplacent). Même appli + titre + texte = une seule entrée,
   qui garde l'action de la copie locale (appui = WhatsApp de la montre) ; un doublon arrivé jusqu'à
@@ -73,6 +74,38 @@ et les envoie à la montre via la **Wearable DataLayer API** (`play-services-wea
   inutilisables pour tester ce chemin
 - `ScreenWaker` allume l'écran à la réception (sauf Ne pas déranger), ce qui permet de couper
   le lever de poignet
+
+### Réveil du téléphone arrêté depuis la montre (17/11/2026)
+Le réveil est **Google Horloge** (`com.google.android.deskclock`), pour que les automatisations HA
+puissent régler l'heure de l'alarme. OHealth n'en relaie pas la sonnerie, contrairement à l'horloge
+OnePlus qu'il synchronise lui-même : la notification qui sonne porte **`FLAG_LOCAL_ONLY`** (« ne pas
+envoyer aux montres »), qu'aucune autre appli ne peut retirer, et Google Horloge n'a pas de réglage pour ça.
+- Notif qui sonne (relevée par `dumpsys notification --noredact`) : canal `Firing`, catégorie `alarm`,
+  `fullScreenIntent`, drapeaux `NO_CLEAR|FOREGROUND_SERVICE|LOCAL_ONLY`, actions `[Répéter, Arrêter]`,
+  texte « mar. 07:00 • Balayez pour arrêter » (coupé avant « • »). L'« Alarme à venir » (canal
+  `Upcoming Alarms v2`, action « Ignorer l'alarme ») est une notif ordinaire, relayée comme les autres.
+- `PhoneNotificationListenerService.isRingingAlarm` la laisse passer malgré le filtre des notifs de
+  service, et l'envoie avec `alarm=true` et `actions` (libellés), **sans horodatage** (republiée à
+  l'identique, elle ne relance rien). Le `fullScreenIntent` écarte les **minuteurs** (canal `Timers v2`,
+  ni titre ni texte, actions Arrêter / Ajouter 1 min) : un minuteur en cours ne doit pas faire vibrer.
+- Montre : `NotificationHolder.setAlarm` ouvre aussitôt un **écran d'alarme** (heure en gros, nom de
+  l'alarme, un seul gros bouton « Arrêter ») ; **tout l'écran** est le bouton (demande de François :
+  au réveil, pas de précision), « Répéter » n'est pas proposé (`getStopIndex` : Arrêter / Stop /
+  Ignorer…, sinon le dernier). Écran tenu 15 min au plus (Google Horloge coupe seule à 10 min).
+  `AlarmVibrator` vibre en usage `ALARM` (passe Ne pas déranger) jusqu'au premier appui, à l'arrêt, ou 1 min ;
+  `ScreenWaker.wake(ctx, true)` allume même en Ne pas déranger.
+- Appui : `/action` « id du chemin\nrang\nlibellé » ; `ReplyListenerService` vérifie le libellé et
+  envoie le `PendingIntent` de l'action, accuse `/action/ok|fail` (échec : « Réessayer »). L'arrêt
+  supprime la notif, donc l'élément DataLayer, ce qui ferme l'écran. Vérifié le 17/11/2026 : arrêt
+  par un appui hors du bouton, notif disparue du téléphone en moins d'1 s.
+- ⚠️ L'écran d'alarme vit dans le **cadran** : si une tuile ou une appli est affichée quand l'alarme
+  sonne, la montre vibre mais l'écran n'apparaît qu'au retour au cadran (le matin, l'écran éteint de
+  la nuit ramène au cadran).
+- Tester sans attendre : `am start -a android.intent.action.SET_ALARM --ei android.intent.extra.alarm.HOUR 7
+  --ei android.intent.extra.alarm.MINUTES 0 --es android.intent.extra.alarm.MESSAGE "'Test'"
+  --ez android.intent.extra.alarm.SKIP_UI true -p com.google.android.deskclock` sur le téléphone ;
+  arrêt de secours : `am start -a android.intent.action.DISMISS_ALARM --es
+  android.intent.extra.alarm.SEARCH_MODE android.label --es android.intent.extra.alarm.MESSAGE "'Test'"`.
 
 ### Témoin de lien téléphone coupé (`PhoneLink`)
 📵 rouge à gauche du pourcentage de batterie quand les notifications ne peuvent plus arriver :
@@ -254,7 +287,8 @@ Lu dans le code décompilé (`wear-services.jar`, `services.jar`, `HeyClockworkS
 - `app/src/main/java/com/defi/watchface/ScreenWaker.java` — Allumage de l'écran à l'arrivée d'une notif
 - `app/src/main/java/com/defi/watchface/HomeData.java` — Météo de la maison et dernière voiture reçues de HA
 - `app/src/main/java/com/defi/watchface/PhoneLink.java` — Témoin de lien téléphone coupé
-- `app/src/main/java/com/defi/watchface/ReplySender.java` / `ReplyActivity.java` — Réponses rapides depuis la bulle
+- `app/src/main/java/com/defi/watchface/ReplySender.java` / `ReplyActivity.java` — Réponses rapides depuis la bulle et boutons d'alarme
+- `app/src/main/java/com/defi/watchface/AlarmVibrator.java` — Vibration pendant qu'une alarme du téléphone sonne
 - `app/src/main/java/com/defi/watchface/TileStore.java` — Données des tuiles HA, appuis en attente, demande d'état frais
 - `app/src/main/java/com/defi/watchface/ShortcutsTileService.java`, `TemplateTileService.java`,
   `ThermostatTileService.java`, `TodoTileService.java` — Tuiles Home Assistant
@@ -269,7 +303,7 @@ Lu dans le code décompilé (`wear-services.jar`, `services.jar`, `HeyClockworkS
 - `mobile/src/main/java/com/defi/watchface/mobile/PhoneNotificationListenerService.java` — Capture notifs + envoi DataLayer
 - `mobile/src/main/java/com/defi/watchface/mobile/HaLink.java` — WebSocket Home Assistant + envoi DataLayer
 - `mobile/src/main/java/com/defi/watchface/mobile/HeartbeatReceiver.java` — Battement de cœur vers la montre
-- `mobile/src/main/java/com/defi/watchface/mobile/ReplyListenerService.java` — Exécution des réponses rapides
+- `mobile/src/main/java/com/defi/watchface/mobile/ReplyListenerService.java` — Exécution des réponses rapides et des boutons d'alarme
 - `mobile/src/main/java/com/defi/watchface/mobile/HaCommandService.java` — Commandes des tuiles et d'Assist
 - `mobile/src/main/java/com/defi/watchface/mobile/MdiIcons.java` — Icônes MDI des Raccourcis
 - `mobile/src/main/java/com/defi/watchface/mobile/MainActivity.java` — Activation du listener, URL/jeton HA, réglage des tuiles, batterie

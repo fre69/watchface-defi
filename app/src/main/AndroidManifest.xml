@@ -16,6 +16,9 @@
     <!-- Allumage de l'écran à l'arrivée d'une notification (ScreenWaker) -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- Vibration pendant qu'une alarme du téléphone sonne (AlarmVibrator) -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
     <!-- Visibilité des packages OHealth (requis Android 11+) -->
     <queries>
         <package android:name="com.heytap.wearable.health" />
@@ -235,6 +238,10 @@
                     android:scheme="wear"
                     android:host="*"
                     android:pathPrefix="/reply" />
+                <data
+                    android:scheme="wear"
+                    android:host="*"
+                    android:pathPrefix="/action" />
                 <data
                     android:scheme="wear"
                     android:host="*"
