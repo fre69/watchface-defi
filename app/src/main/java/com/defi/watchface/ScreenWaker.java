@@ -2,6 +2,7 @@ package com.defi.watchface;
 
 import android.app.NotificationManager;
 import android.content.Context;
+import android.content.Intent;
 import android.os.PowerManager;
 import android.util.Log;
 
@@ -43,5 +44,24 @@ final class ScreenWaker {
                 | PowerManager.ACQUIRE_CAUSES_WAKEUP | PowerManager.ON_AFTER_RELEASE, "defi:notification");
         wl.acquire(HOLD_MS);
         Log.d(TAG, "Écran allumé pour une notification");
+    }
+
+    /**
+     * Ramène le cadran au premier plan (tuile ou appli affichée) : l'écran
+     * d'alarme y est dessiné. Même intent que la touche accueil de la montre.
+     * Sans FROM_HOME_KEY, la SysUI (dont les tuiles font partie) reçoit
+     * l'intent mais reste sur la tuile. Autorisé depuis l'arrière-plan : la
+     * DataLayer livre ses événements avec un jeton de lancement d'activité
+     */
+    static void showWatchFace(Context ctx) {
+        try {
+            ctx.startActivity(new Intent(Intent.ACTION_MAIN)
+                    .addCategory(Intent.CATEGORY_HOME)
+                    .putExtra("android.intent.extra.FROM_HOME_KEY", true)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            Log.d(TAG, "Cadran ramené au premier plan");
+        } catch (RuntimeException e) {
+            Log.w(TAG, "Retour au cadran impossible", e);
+        }
     }
 }

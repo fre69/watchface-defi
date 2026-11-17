@@ -98,9 +98,12 @@ envoyer aux montres »), qu'aucune autre appli ne peut retirer, et Google Horlog
   envoie le `PendingIntent` de l'action, accuse `/action/ok|fail` (échec : « Réessayer »). L'arrêt
   supprime la notif, donc l'élément DataLayer, ce qui ferme l'écran. Vérifié le 17/11/2026 : arrêt
   par un appui hors du bouton, notif disparue du téléphone en moins d'1 s.
-- ⚠️ L'écran d'alarme vit dans le **cadran** : si une tuile ou une appli est affichée quand l'alarme
-  sonne, la montre vibre mais l'écran n'apparaît qu'au retour au cadran (le matin, l'écran éteint de
-  la nuit ramène au cadran).
+- L'écran d'alarme vit dans le **cadran** : si une tuile ou une appli est affichée,
+  `ScreenWaker.showWatchFace` ramène le cadran par l'intent de la touche accueil (`MAIN`/`HOME`
+  avec l'extra **`android.intent.extra.FROM_HOME_KEY`** : sans lui, la SysUI, dont les tuiles font
+  partie, reçoit l'intent et reste sur la tuile). Le lancement depuis l'arrière-plan est accepté
+  (`BAL_ALLOW_PERMISSION process allowed by token` : la DataLayer livre ses événements avec un jeton).
+  Vérifié le 17/11/2026, montre sur une tuile.
 - Tester sans attendre : `am start -a android.intent.action.SET_ALARM --ei android.intent.extra.alarm.HOUR 7
   --ei android.intent.extra.alarm.MINUTES 0 --es android.intent.extra.alarm.MESSAGE "'Test'"
   --ez android.intent.extra.alarm.SKIP_UI true -p com.google.android.deskclock` sur le téléphone ;

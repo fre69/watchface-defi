@@ -95,6 +95,7 @@ public class DataLayerListenerService extends WearableListenerService {
                 NotificationHolder.setAlarm(key, appName, title, text, icon,
                         actions.toArray(new String[0]), path.substring(NOTIF_PREFIX.length()));
                 ScreenWaker.wake(this, true);
+                ScreenWaker.showWatchFace(this);
                 AlarmVibrator.start(this);
                 continue;
             }
