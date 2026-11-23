@@ -133,6 +133,15 @@ d'OHealth (aucune appli Fit sur le téléphone). Reconnaissance d'activité reti
 effective au prochain redémarrage des services Google :
 `adb shell appops set --uid com.google.android.gms ACTIVITY_RECOGNITION ignore` (rétablir : `allow`).
 Vérifier ensuite que `dumpsys sensorservice` ne montre plus `LocalSensorAdapter` sur `Step_Sensor`.
+⚠️ **Le blocage saute à chaque redémarrage de la montre** (constaté le 23/11/2026, Fit revenu sur
+le capteur de pas) : la permission de GMS est `SYSTEM_FIXED`, et Android recale le mode appops sur
+la permission au démarrage. Le processus GMS, persistant, garde son abonnement tant qu'il n'est pas
+relancé (`am kill` n'y fait rien). Après chaque redémarrage : remettre l'appops, puis
+`adb shell am force-stop com.google.android.gms` (GMS repart seul ; la DataLayer est coupée quelques
+secondes). Pas de solution durable sans root : `pm disable …/.fitness.service.recording.FitRecordingBroker`
+est refusé (`Shell cannot change component state`, Android 14). Coût mesuré quand Fit tourne : ≈ 5 mAh/jour (surtout les
+capteurs, 4,5), soit ≈ 4 % de la consommation quotidienne de la montre. Le reste de GMS (≈ 1,7 mAh)
+n'est pas à couper : il porte la DataLayer (`Wear_Transport`), dont dépend tout le projet.
 
 ### Données Home Assistant (téléphone → montre)
 L'appli `mobile` garde un WebSocket ouvert vers Home Assistant (`HaLink`, jeton longue durée,
