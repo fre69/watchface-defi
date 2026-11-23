@@ -286,6 +286,13 @@ Lu dans le code décompilé (`wear-services.jar`, `services.jar`, `HeyClockworkS
   vers le MCU (`BmSettingsChioce`). Toucher pour réveiller : `Settings.System touch_to_wake_switch`.
   `secure doze_pulse_on_notifications` et `system enable_notification_without_tap_or_tilt` ne sont
   lus par aucun composant de la montre : sans effet.
+- **Mode intelligent** : `Settings.System smart_mode_switch`, 1 = `SMART_MODE_BALANCE` (défaut),
+  0 = `SMART_MODE_PERFORMANCE`. À 0, `BmManagerService.setSmartMode` coupe le mode BM du noyau
+  (`BmSwitchUtil.setKernelBmMode(false)`), `noteGoToWatchFace` ne bascule jamais vers le MCU et la
+  surveillance `BmStateWatchdog` s'arrête. À 1 avec notre cadran, cette surveillance retente la
+  bascule toutes les 3 s et se la voit refuser (`frw: third wf or widget`). La ligne `high_pref` de
+  `batterystats` (`HighPrefPowerCalculator`) n'est qu'un calcul : temps passé à 0 × 0,72 mA
+  (`heytap.high_perf` du `power_profile.xml`), pas une mesure.
 - En charge (USB compris), la montre ne quitte jamais l'état Android (`frw: charging`) ; pour tester
   la veille sans débrancher : `adb shell dumpsys battery unplug` (puis `dumpsys battery reset`).
 
