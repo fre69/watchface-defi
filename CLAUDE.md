@@ -44,6 +44,14 @@ et les envoie à la montre via la **Wearable DataLayer API** (`play-services-wea
   (`deleteDataItems`) quand la notif disparaît du téléphone ; la montre reçoit `TYPE_DELETED`.
   Un élément unique réécrit à chaque fois perdait des événements rapprochés (« Tout effacer »).
   `purgeStaleItems()` supprime au branchement de l'écoute les éléments de notifs disparues entre-temps
+- ⚠️ **Notifications sensibles masquées** (Android 15+, téléphone sous Android 16) : l'assistant de
+  notifications classe certaines notifs sensibles (`mSensitiveContent=true` dans `dumpsys notification
+  --noredact`) : codes de vérification, mais aussi un SMS publicitaire ordinaire. Leur contenu est
+  remplacé par « Contenu privé » pour tout écouteur sans `RECEIVE_SENSITIVE_NOTIFICATIONS`
+  (`signature|role`). Notre appli la déclare et la reçoit du rôle compagnon de montre, qu'OHealth détient
+  aussi : `adb shell cmd role add-role-holder android.app.role.COMPANION_DEVICE_WATCH
+  com.defi.watchface.distance 0` (à refaire après une désinstallation). Vérifié le 24/11/2026 avec un
+  faux code : texte complet sur la montre
 - Conversations (MessagingStyle) : texte = **dernier message** de `EXTRA_MESSAGES` (auteur en
   préfixe dans un groupe) ; `EXTRA_TEXT` n'est souvent qu'un résumé ou le premier message
 - Le cadran garde une **file** (`NotificationHolder`, la plus récente en tête, 20 au plus ; même clé
