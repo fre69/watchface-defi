@@ -94,7 +94,10 @@ envoyer aux montres »), qu'aucune autre appli ne peut retirer, et Google Horlog
   Ignorer…, sinon le dernier). Écran tenu 15 min au plus (Google Horloge coupe seule à 10 min).
   `AlarmVibrator` vibre en usage `ALARM` (passe Ne pas déranger) et **tient l'écran allumé** (WakeLock
   `defi:alarm`) jusqu'au premier appui, à l'arrêt, ou 1 min (choix de François : plus long coûte trop
-  de batterie) ; `ScreenWaker.wake(ctx, true)` allume même en Ne pas déranger.
+  de batterie) ; `ScreenWaker.wake(ctx, true)` allume même en Ne pas déranger. Au début, **5 s du son
+  d'alarme de la montre** (`RingtoneManager.TYPE_ALARM`, usage `ALARM` : flux alarme, que le mode
+  silencieux ne coupe pas), créé et arrêté sur le fil principal : le fil de la DataLayer disparaît
+  ensuite (« Handler on a dead thread » à l'arrêt).
 - ⚠️ **Le sommeil profond coupe les vibrations au réveil** : au redémarrage de 6:00,
   `DeepinSleepManager` passe `Settings.System vibrate_on` à 0 tant qu'il croit l'utilisateur endormi,
   et le service de vibration refuse alors tout, alarme comprise (`ignored_for_settings` dans
