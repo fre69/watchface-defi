@@ -133,8 +133,8 @@ d'OHealth (aucune appli Fit sur le téléphone). Reconnaissance d'activité reti
 effective au prochain redémarrage des services Google :
 `adb shell appops set --uid com.google.android.gms ACTIVITY_RECOGNITION ignore` (rétablir : `allow`).
 Vérifier ensuite que `dumpsys sensorservice` ne montre plus `LocalSensorAdapter` sur `Step_Sensor`.
-⚠️ **Le blocage saute à chaque redémarrage de la montre** (constaté le 23/11/2026, Fit revenu sur
-le capteur de pas) : la permission de GMS est `SYSTEM_FIXED`, et Android recale le mode appops sur
+⚠️ **Le blocage saute à chaque redémarrage de la montre, donc chaque matin à la sortie du sommeil
+profond** (cf. « Allumage de l'écran ») ; constaté le 23/11/2026 : la permission de GMS est `SYSTEM_FIXED`, et Android recale le mode appops sur
 la permission au démarrage. Le processus GMS, persistant, garde son abonnement tant qu'il n'est pas
 relancé (`am kill` n'y fait rien). Après chaque redémarrage : remettre l'appops, puis
 `adb shell am force-stop com.google.android.gms` (GMS repart seul ; la DataLayer est coupée quelques
@@ -292,7 +292,16 @@ Lu dans le code décompilé (`wear-services.jar`, `services.jar`, `HeyClockworkS
   surveillance `BmStateWatchdog` s'arrête. À 1 avec notre cadran, cette surveillance retente la
   bascule toutes les 3 s et se la voit refuser (`frw: third wf or widget`). La ligne `high_pref` de
   `batterystats` (`HighPrefPowerCalculator`) n'est qu'un calcul : temps passé à 0 × 0,72 mA
-  (`heytap.high_perf` du `power_profile.xml`), pas une mesure.
+  (`heytap.high_perf` du `power_profile.xml`), pas une mesure. ⚠️ **Le MCU a le dernier mot** :
+  au démarrage, il renvoie sa valeur (`BmDataExchange.handDealMsg`, message 103) et Android
+  l'écrit. Passé à 1 par adb le 23/11/2026, le réglage était revenu à 0 après le redémarrage du
+  lendemain matin.
+- **Sommeil profond** (`Settings.System device_deep_sleep=1`, `start_deep_sleep_time=21:00`,
+  `over_deep_sleep_time=6:00`) : la montre **éteint Android** pour la nuit (`sys.boot.reason` =
+  `shutdown,enter_deepin_sleep_mode`), le MCU seul tient l'écran, l'heure et la santé, comme en mode
+  éco, puis Android **redémarre** à l'heure de fin. Pendant ce temps, ni cadran, ni notifications
+  relayées, ni alarme du téléphone sur la montre. Tout réglage qui ne survit pas à un redémarrage
+  (appops de Google Fit…) est perdu **chaque matin**.
 - En charge (USB compris), la montre ne quitte jamais l'état Android (`frw: charging`) ; pour tester
   la veille sans débrancher : `adb shell dumpsys battery unplug` (puis `dumpsys battery reset`).
 
