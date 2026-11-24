@@ -92,8 +92,21 @@ envoyer aux montres »), qu'aucune autre appli ne peut retirer, et Google Horlog
   l'alarme, un seul gros bouton « Arrêter ») ; **tout l'écran** est le bouton (demande de François :
   au réveil, pas de précision), « Répéter » n'est pas proposé (`getStopIndex` : Arrêter / Stop /
   Ignorer…, sinon le dernier). Écran tenu 15 min au plus (Google Horloge coupe seule à 10 min).
-  `AlarmVibrator` vibre en usage `ALARM` (passe Ne pas déranger) jusqu'au premier appui, à l'arrêt, ou 1 min ;
-  `ScreenWaker.wake(ctx, true)` allume même en Ne pas déranger.
+  `AlarmVibrator` vibre en usage `ALARM` (passe Ne pas déranger) et **tient l'écran allumé** (WakeLock
+  `defi:alarm`) jusqu'au premier appui, à l'arrêt, ou 1 min (choix de François : plus long coûte trop
+  de batterie) ; `ScreenWaker.wake(ctx, true)` allume même en Ne pas déranger.
+- ⚠️ **Le sommeil profond coupe les vibrations au réveil** : au redémarrage de 6:00,
+  `DeepinSleepManager` passe `Settings.System vibrate_on` à 0 tant qu'il croit l'utilisateur endormi,
+  et le service de vibration refuse alors tout, alarme comprise (`ignored_for_settings` dans
+  `dumpsys vibrator_manager`, constaté le 24/11/2026 à 6:30). `AlarmVibrator` le remet à 1 à l'arrivée
+  de l'alarme, et de nouveau s'il est recoupé. Il faut l'accès spécial « modifier les paramètres
+  système » : `adb shell appops set com.defi.watchface.distance WRITE_SETTINGS allow` (sinon journal
+  `DefiAlarm` : « accès WRITE_SETTINGS refusé »). Vérifié le 24/11/2026 avec `vibrate_on=0`.
+- Régler une alarme d'essai sans toucher le téléphone : `notify.mobile_app_cph2609` avec
+  `message: command_activity`, `intent_package_name: com.google.android.deskclock`,
+  `intent_action: android.intent.action.SET_ALARM`, `intent_extras:
+  android.intent.extra.alarm.HOUR:9,android.intent.extra.alarm.MINUTES:43,android.intent.extra.alarm.MESSAGE:Test,android.intent.extra.alarm.SKIP_UI:true`
+  (même appel que l'automatisation du réveil d'école, `Q:\automations.yaml`).
 - Appui : `/action` « id du chemin\nrang\nlibellé » ; `ReplyListenerService` vérifie le libellé et
   envoie le `PendingIntent` de l'action, accuse `/action/ok|fail` (échec : « Réessayer »). L'arrêt
   supprime la notif, donc l'élément DataLayer, ce qui ferme l'écran. Vérifié le 17/11/2026 : arrêt
@@ -389,6 +402,9 @@ adb shell cmd notification allow_listener com.defi.watchface.distance/com.defi.w
 adb shell pm grant com.defi.watchface.distance android.permission.BODY_SENSORS
 adb shell pm grant com.defi.watchface.distance android.permission.ACTIVITY_RECOGNITION
 adb shell pm grant com.defi.watchface.distance com.google.android.wearable.permission.RECEIVE_COMPLICATION_DATA
+
+# Vibration de l'alarme malgré le sommeil profond (AlarmVibrator réécrit vibrate_on)
+adb shell appops set com.defi.watchface.distance WRITE_SETTINGS allow
 
 # --- RÉGLAGES MONTRE (options absentes des paramètres UI) ---
 # ⚠️ heads_up_notifications_enabled / notification_bubbles : la SysUI OnePlus ne lit

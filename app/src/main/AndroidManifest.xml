@@ -18,6 +18,9 @@
 
     <!-- Vibration pendant qu'une alarme du téléphone sonne (AlarmVibrator) -->
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Rétablir vibrate_on, que le sommeil profond OnePlus coupe au réveil d'Android
+         (accès spécial accordé par adb : appops set … WRITE_SETTINGS allow) -->
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" />
 
     <!-- Visibilité des packages OHealth (requis Android 11+) -->
     <queries>
