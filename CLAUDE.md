@@ -74,6 +74,13 @@ et les envoie à la montre via la **Wearable DataLayer API** (`play-services-wea
   inutilisables pour tester ce chemin
 - `ScreenWaker` allume l'écran à la réception (sauf Ne pas déranger), ce qui permet de couper
   le lever de poignet
+- **Vibration** (`ScreenWaker.buzz`, deux impulsions de 120 ms) pour un message **nouveau** seulement
+  (`NotificationHolder.set` renvoie faux pour un doublon absorbé ou une republication identique) :
+  les notifications OHealth, qui vibraient, sont coupées depuis le 24/11/2026. ⚠️ Pas l'usage
+  `NOTIFICATION` : les services Wear OS (`NotificationCollectorService`) suppriment en permanence les
+  effets des notifications (`mListenersDisablingEffects` hint 2 dans `dumpsys notification`), la
+  vibration est refusée (`ignored_app_ops`). Usage `COMMUNICATION_REQUEST`, Ne pas déranger vérifié
+  par le code. Les notifs locales de la montre vibrent déjà par le système
 
 ### Réveil du téléphone arrêté depuis la montre (17/11/2026)
 Le réveil est **Google Horloge** (`com.google.android.deskclock`), pour que les automatisations HA

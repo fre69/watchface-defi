@@ -105,8 +105,12 @@ public class DataLayerListenerService extends WearableListenerService {
             // Réponse possible : la bulle propose Oui / Non / OK / ✎ (envoyés par le téléphone)
             String replyId = map.getBoolean("canReply", false)
                     ? path.substring(NOTIF_PREFIX.length()) : null;
-            NotificationHolder.set(key, appName, title, text, icon, picture, null, replyId);
+            boolean isNew = NotificationHolder.set(key, appName, title, text, icon, picture, null, replyId);
             ScreenWaker.wake(this);
+            // Les notifications OHealth (qui vibraient) sont coupées : la montre signale
+            // seule les nouvelles, pas les doublons ni les republications identiques
+            if (isNew)
+                ScreenWaker.buzz(this);
         }
     }
 

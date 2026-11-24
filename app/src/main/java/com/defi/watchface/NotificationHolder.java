@@ -119,9 +119,21 @@ public final class NotificationHolder {
      * le même message venu de l'autre côté est fusionné. replyId : chemin de la
      * notification du téléphone si elle permet de répondre, sinon null.
      */
-    public static void set(String k, String app, String t, String txt, Bitmap icn, Bitmap pic,
+    /**
+     * @return true pour un message nouveau (à signaler par une vibration) ; false
+     *         pour un doublon absorbé ou une notification republiée à l'identique
+     */
+    public static boolean set(String k, String app, String t, String txt, Bitmap icn, Bitmap pic,
             PendingIntent intent, String replyId) {
+        boolean isNew;
         synchronized (NotificationHolder.class) {
+            boolean unchanged = false;
+            for (Entry e : pending) {
+                if (e.keys.contains(k)) {
+                    unchanged = e.isTwin(app, t, txt);
+                    break;
+                }
+            }
             removeKey(k);
             Entry twin = findTwin(app, t, txt);
             if (twin != null) {
@@ -129,8 +141,10 @@ public final class NotificationHolder {
             } else {
                 add(new Entry(k, app, t, txt, icn, pic, intent, replyId, null, null));
             }
+            isNew = twin == null && !unchanged;
         }
         notifyChange();
+        return isNew;
     }
 
     /**

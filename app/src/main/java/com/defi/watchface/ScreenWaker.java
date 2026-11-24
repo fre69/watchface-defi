@@ -4,6 +4,9 @@ import android.app.NotificationManager;
 import android.content.Context;
 import android.content.Intent;
 import android.os.PowerManager;
+import android.os.VibrationAttributes;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
 import android.util.Log;
 
 /**
@@ -44,6 +47,28 @@ final class ScreenWaker {
                 | PowerManager.ACQUIRE_CAUSES_WAKEUP | PowerManager.ON_AFTER_RELEASE, "defi:notification");
         wl.acquire(HOLD_MS);
         Log.d(TAG, "Écran allumé pour une notification");
+    }
+
+    /** Deux impulsions courtes, comme une notification OHealth */
+    private static final long[] BUZZ = { 0, 120, 120, 120 };
+
+    /**
+     * Vibration courte d'une notification relayée par le téléphone. Pas l'usage
+     * « notification » : les services Wear OS (NotificationCollectorService)
+     * suppriment en permanence les effets des notifications des applis
+     * (indice HINT_HOST_DISABLE_NOTIFICATION_EFFECTS), la vibration serait
+     * refusée (ignored_app_ops). « Demande de communication » y échappe ; Ne pas
+     * déranger est vérifié ici, et le sommeil profond (vibrate_on=0) la coupe aussi
+     */
+    static void buzz(Context ctx) {
+        NotificationManager nm = ctx.getSystemService(NotificationManager.class);
+        if (nm != null && nm.getCurrentInterruptionFilter() != NotificationManager.INTERRUPTION_FILTER_ALL)
+            return;
+        Vibrator v = ctx.getSystemService(Vibrator.class);
+        if (v == null || !v.hasVibrator())
+            return;
+        v.vibrate(VibrationEffect.createWaveform(BUZZ, -1),
+                VibrationAttributes.createForUsage(VibrationAttributes.USAGE_COMMUNICATION_REQUEST));
     }
 
     /**
