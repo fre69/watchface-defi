@@ -73,6 +73,14 @@
             android:taskAffinity=""
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
+        <!-- Lecture d'une notification en entier, page qui défile (appui sur la bulle) -->
+        <activity
+            android:name=".NotificationReadActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:taskAffinity=".read"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar" />
+
         <!-- Tuile Liste : ajout (saisie du système) et édition d'une tâche. Exportée : sinon
              le système refuse de la lancer depuis la tuile (« Activity constraints not met ») -->
         <activity

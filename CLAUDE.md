@@ -58,6 +58,12 @@ et les envoie à la montre via la **Wearable DataLayer API** (`play-services-wea
   = mise à jour qui remplace). **Pastille** à droite de l'heure (icône de la plus récente, nombre en
   attente) ; un appui sur la pastille ou l'heure ouvre la plus récente (bulle 60 s). Le bouton du
   bas est un **›** tant qu'il en reste (« +N » à droite) et passe à la suivante, puis un ✕
+- **Lecture en entier** (`NotificationReadActivity`) : la bulle coupe le texte à 4 lignes, et un
+  cadran ne reçoit que des appuis (un glissement ouvre la zone de notifications du système, jamais
+  le défilement). Un appui sur la bulle d'une notification du téléphone, hors boutons, ouvre une page
+  qui défile au doigt ou à la couronne (indicateur rond de Wear OS) : icône, appli, titre, image,
+  texte complet, réponses rapides en bas ; glissement vers la droite = retour au cadran. Une notif
+  locale garde l'ancien geste (ouvre son appli et ferme la bulle)
 - **Réponses rapides** : si la notif du téléphone a une action « Répondre » à saisie libre
   (`WearableExtender` d'abord, sinon `actions`), `canReply=true` ; la bulle propose Oui / Non / OK / ✎
   (✎ = `ReplyActivity`, saisie du système via `androidx.wear:wear-input`). La montre envoie

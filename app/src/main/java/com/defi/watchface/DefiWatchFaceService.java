@@ -303,10 +303,18 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
                     renderer.invalidate();
                     return;
                 }
-                // Ailleurs : fermeture (les suivantes gardent la pastille), et ouverture
-                // de la notification quand elle en porte l'action (notifs locales)
+                // Ailleurs, notification du téléphone : lecture en entier, page qui défile
+                // (la bulle coupe le texte à 4 lignes, et un cadran ne reçoit pas de glissement)
                 android.app.PendingIntent intent = NotificationHolder.getContentIntent();
-                if (intent != null) {
+                if (intent == null) {
+                    startActivity(new android.content.Intent(DefiWatchFaceService.this,
+                            NotificationReadActivity.class)
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));
+                    return;
+                }
+                // Notification locale : fermeture (les suivantes gardent la pastille), et
+                // ouverture de l'appli qui l'a publiée
+                {
                     try {
                         intent.send();
                     } catch (android.app.PendingIntent.CanceledException e) {
