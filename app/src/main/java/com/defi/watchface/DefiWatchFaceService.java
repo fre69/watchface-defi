@@ -266,6 +266,8 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
                     renderer.invalidate();
                     return;
                 }
+                // Bulle ouverte d'elle-même : un appui en fait une bulle lue, ouverte à la main
+                NotificationHolder.confirmPeek();
                 // Alarme du téléphone : tout l'écran est le bouton « Arrêter » (au
                 // réveil, pas de précision) ; l'appui coupe aussi la vibration. Après
                 // un échec, un nouvel appui réessaie

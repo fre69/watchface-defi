@@ -2,6 +2,8 @@ package com.defi.watchface;
 
 import android.app.PendingIntent;
 import android.graphics.Bitmap;
+import android.os.Handler;
+import android.os.Looper;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -23,6 +25,12 @@ import java.util.List;
 public final class NotificationHolder {
     /** Durée d'affichage de la bulle (ms), sauf fermeture plus tôt */
     public static final long DISPLAY_DURATION_MS = 60_000;
+    /**
+     * Bulle ouverte d'elle-même à l'arrivée d'un message (les notifications OHealth,
+     * qui faisaient office de popup, sont coupées) : refermée sans appui, le message
+     * reste non lu, avec la pastille
+     */
+    public static final long PEEK_DURATION_MS = 10_000;
     /**
      * Alarme qui sonne sur le téléphone : la bulle reste ouverte jusqu'à son arrêt
      * (élément supprimé), au plus ce délai si la suppression n'arrive jamais
@@ -101,6 +109,11 @@ public final class NotificationHolder {
     /** Notification affichée dans la bulle (null : fermée) */
     private static Entry shown = null;
     private static long openedAt = 0;
+    /** Bulle ouverte d'elle-même : le message reste dans la file tant qu'on n'y touche pas */
+    private static boolean peek = false;
+    private static final Handler main = new Handler(Looper.getMainLooper());
+    /** Redessine le cadran à la fin de la bulle automatique, sans attendre la minute */
+    private static final Runnable PEEK_END = NotificationHolder::notifyChange;
     /** Dernières entrées lues, pour reconnaître un doublon arrivé en retard */
     private static final List<Entry> recentlyRead = new ArrayList<>();
     private static int replyState = REPLY_NONE;
@@ -172,9 +185,41 @@ public final class NotificationHolder {
     public static synchronized void open() {
         if (pending.isEmpty())
             return;
+        peek = false;
         shown = pending.remove(0);
         openedAt = System.currentTimeMillis();
         replyState = REPLY_NONE;
+        shown.readAt = openedAt;
+        recentlyRead.add(0, shown);
+        while (recentlyRead.size() > MAX_PENDING)
+            recentlyRead.remove(recentlyRead.size() - 1);
+    }
+
+    /**
+     * Arrivée d'un message : la plus récente s'ouvre 10 s sans quitter la file,
+     * sauf si une bulle ouverte à la main (ou une alarme) est déjà à l'écran
+     */
+    public static void peek() {
+        synchronized (NotificationHolder.class) {
+            if (pending.isEmpty() || (isActive() && !peek))
+                return;
+            peek = true;
+            shown = pending.get(0);
+            openedAt = System.currentTimeMillis();
+            replyState = REPLY_NONE;
+        }
+        main.removeCallbacks(PEEK_END);
+        main.postDelayed(PEEK_END, PEEK_DURATION_MS + 50);
+        notifyChange();
+    }
+
+    /** Appui sur une bulle ouverte d'elle-même : elle devient une bulle lue, ouverte à la main */
+    public static synchronized void confirmPeek() {
+        if (!peek || !isActive())
+            return;
+        peek = false;
+        pending.remove(shown);
+        openedAt = System.currentTimeMillis();
         shown.readAt = openedAt;
         recentlyRead.add(0, shown);
         while (recentlyRead.size() > MAX_PENDING)
@@ -200,6 +245,7 @@ public final class NotificationHolder {
 
     /** Ferme la bulle ; les notifications restantes gardent la pastille */
     public static synchronized void dismiss() {
+        peek = false;
         shown = null;
         openedAt = 0;
         replyState = REPLY_NONE;
@@ -296,11 +342,14 @@ public final class NotificationHolder {
     }
 
     private static long duration() {
-        return shown != null && shown.actions != null ? ALARM_DURATION_MS : DISPLAY_DURATION_MS;
+        if (shown != null && shown.actions != null)
+            return ALARM_DURATION_MS;
+        return peek ? PEEK_DURATION_MS : DISPLAY_DURATION_MS;
     }
 
+    /** En attente, sans compter le message affiché par la bulle automatique */
     public static synchronized int getPendingCount() {
-        return pending.size();
+        return pending.size() - (peek && isActive() && pending.contains(shown) ? 1 : 0);
     }
 
     /** Icône de la plus récente en attente, pour la pastille */

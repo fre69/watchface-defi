@@ -106,11 +106,16 @@ public class DataLayerListenerService extends WearableListenerService {
             String replyId = map.getBoolean("canReply", false)
                     ? path.substring(NOTIF_PREFIX.length()) : null;
             boolean isNew = NotificationHolder.set(key, appName, title, text, icon, picture, null, replyId);
-            ScreenWaker.wake(this);
-            // Les notifications OHealth (qui vibraient) sont coupées : la montre signale
-            // seule les nouvelles, pas les doublons ni les republications identiques
-            if (isNew)
+            // Les notifications OHealth (popup et vibration) sont coupées : la montre
+            // signale seule les nouvelles, pas les doublons ni les republications
+            // identiques. Bulle 10 s, écran tenu autant, vibration
+            if (isNew) {
+                NotificationHolder.peek();
+                ScreenWaker.wake(this, false, NotificationHolder.PEEK_DURATION_MS);
                 ScreenWaker.buzz(this);
+            } else {
+                ScreenWaker.wake(this);
+            }
         }
     }
 

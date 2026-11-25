@@ -31,6 +31,11 @@ final class ScreenWaker {
 
     /** alarm : alarme du téléphone qui sonne, l'écran s'allume même en Ne pas déranger */
     static void wake(Context ctx, boolean alarm) {
+        wake(ctx, alarm, HOLD_MS);
+    }
+
+    /** holdMs : écran tenu allumé ce temps (bulle automatique d'un message), puis délai normal */
+    static void wake(Context ctx, boolean alarm, long holdMs) {
         PowerManager pm = ctx.getSystemService(PowerManager.class);
         if (pm == null || pm.isInteractive())
             return;
@@ -45,12 +50,16 @@ final class ScreenWaker {
 
         PowerManager.WakeLock wl = pm.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK
                 | PowerManager.ACQUIRE_CAUSES_WAKEUP | PowerManager.ON_AFTER_RELEASE, "defi:notification");
-        wl.acquire(HOLD_MS);
+        wl.acquire(holdMs);
         Log.d(TAG, "Écran allumé pour une notification");
     }
 
-    /** Deux impulsions courtes, comme une notification OHealth */
-    private static final long[] BUZZ = { 0, 120, 120, 120 };
+    /**
+     * Deux impulsions franches, à pleine puissance : deux de 120 ms passaient
+     * inaperçues au poignet (vérifié le 25/11/2026)
+     */
+    private static final long[] BUZZ = { 0, 300, 150, 300 };
+    private static final int[] BUZZ_AMPLITUDES = { 0, 255, 0, 255 };
 
     /**
      * Vibration courte d'une notification relayée par le téléphone. Pas l'usage
@@ -67,7 +76,10 @@ final class ScreenWaker {
         Vibrator v = ctx.getSystemService(Vibrator.class);
         if (v == null || !v.hasVibrator())
             return;
-        v.vibrate(VibrationEffect.createWaveform(BUZZ, -1),
+        VibrationEffect effect = v.hasAmplitudeControl()
+                ? VibrationEffect.createWaveform(BUZZ, BUZZ_AMPLITUDES, -1)
+                : VibrationEffect.createWaveform(BUZZ, -1);
+        v.vibrate(effect,
                 VibrationAttributes.createForUsage(VibrationAttributes.USAGE_COMMUNICATION_REQUEST));
     }
 

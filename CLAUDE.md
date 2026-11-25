@@ -82,9 +82,13 @@ et les envoie à la montre via la **Wearable DataLayer API** (`play-services-wea
   inutilisables pour tester ce chemin
 - `ScreenWaker` allume l'écran à la réception (sauf Ne pas déranger), ce qui permet de couper
   le lever de poignet
-- **Vibration** (`ScreenWaker.buzz`, deux impulsions de 120 ms) pour un message **nouveau** seulement
-  (`NotificationHolder.set` renvoie faux pour un doublon absorbé ou une republication identique) :
-  les notifications OHealth, qui vibraient, sont coupées depuis le 24/11/2026. ⚠️ Pas l'usage
+- **Message nouveau** (`NotificationHolder.set` renvoie faux pour un doublon absorbé ou une
+  republication identique) : les notifications OHealth (popup et vibration) sont coupées depuis le
+  24/11/2026, le cadran prend le relais. **Bulle ouverte d'elle-même 10 s** (`NotificationHolder.peek`,
+  `PEEK_DURATION_MS`), écran tenu autant (`ScreenWaker.wake(ctx, false, 10 s)`) ; sans appui elle se
+  referme et le message reste non lu, avec la pastille ; un appui en fait une bulle ouverte à la main
+  (`confirmPeek`, 60 s). **Vibration** (`ScreenWaker.buzz`) : deux impulsions de 300 ms à pleine
+  puissance (deux de 120 ms passaient inaperçues au poignet, 25/11/2026). ⚠️ Pas l'usage
   `NOTIFICATION` : les services Wear OS (`NotificationCollectorService`) suppriment en permanence les
   effets des notifications (`mListenersDisablingEffects` hint 2 dans `dumpsys notification`), la
   vibration est refusée (`ignored_app_ops`). Usage `COMMUNICATION_REQUEST`, Ne pas déranger vérifié
@@ -113,6 +117,13 @@ envoyer aux montres »), qu'aucune autre appli ne peut retirer, et Google Horlog
   d'alarme de la montre** (`RingtoneManager.TYPE_ALARM`, usage `ALARM` : flux alarme, que le mode
   silencieux ne coupe pas), créé et arrêté sur le fil principal : le fil de la DataLayer disparaît
   ensuite (« Handler on a dead thread » à l'arrêt).
+- ⚠️ **Le mode coucher OnePlus coupe aussi toute vibration** (`Settings.Global bedtime_mode=1`, ou
+  `zen_mode=1`) : `VibratorManagerService.shouldVibrateAlways` ne laisse passer que sa liste blanche
+  (`com.heytap.wearable.clock`, `.health`, `.heartrate`, `.sports`, `.relax`, `android`…), alarme
+  comprise (`ignored_for_settings` le 25/11/2026 à 6:25 avec `vibrate_on=1`). `AlarmVibrator` quitte le
+  mode coucher à l'alarme : `adb shell pm grant com.defi.watchface.distance
+  android.permission.WRITE_SECURE_SETTINGS` (sinon journal `DefiAlarm` : « WRITE_SECURE_SETTINGS
+  refusée »). Ne pas déranger (`zen_mode`) n'est pas levé : à éviter la nuit si l'alarme doit vibrer
 - ⚠️ **Le sommeil profond coupe les vibrations au réveil** : au redémarrage de 6:00,
   `DeepinSleepManager` passe `Settings.System vibrate_on` à 0 tant qu'il croit l'utilisateur endormi,
   et le service de vibration refuse alors tout, alarme comprise (`ignored_for_settings` dans
@@ -423,6 +434,8 @@ adb shell pm grant com.defi.watchface.distance com.google.android.wearable.permi
 
 # Vibration de l'alarme malgré le sommeil profond (AlarmVibrator réécrit vibrate_on)
 adb shell appops set com.defi.watchface.distance WRITE_SETTINGS allow
+# ... et malgré le mode coucher (AlarmVibrator remet Settings.Global bedtime_mode à 0)
+adb shell pm grant com.defi.watchface.distance android.permission.WRITE_SECURE_SETTINGS
 
 # --- RÉGLAGES MONTRE (options absentes des paramètres UI) ---
 # ⚠️ heads_up_notifications_enabled / notification_bubbles : la SysUI OnePlus ne lit

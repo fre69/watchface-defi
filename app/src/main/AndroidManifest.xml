@@ -21,6 +21,9 @@
     <!-- Rétablir vibrate_on, que le sommeil profond OnePlus coupe au réveil d'Android
          (accès spécial accordé par adb : appops set … WRITE_SETTINGS allow) -->
     <uses-permission android:name="android.permission.WRITE_SETTINGS" />
+    <!-- Quitter le mode coucher OnePlus à l'alarme (Settings.Global bedtime_mode), qui
+         refuse toute vibration hors liste blanche (accordée par adb : pm grant …) -->
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
 
     <!-- Visibilité des packages OHealth (requis Android 11+) -->
     <queries>

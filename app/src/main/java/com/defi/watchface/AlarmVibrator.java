@@ -30,6 +30,11 @@ import android.util.Log;
  * que la montre croit l'utilisateur endormi : l'alarme serait refusée
  * (ignored_for_settings). Le réglage est donc remis à 1 pendant l'alarme, et
  * de nouveau s'il est recoupé, avec l'accès WRITE_SETTINGS accordé par adb.
+ *
+ * Le service de vibration OnePlus refuse aussi tout (alarme comprise) en mode
+ * coucher (Settings.Global bedtime_mode=1), sauf aux applis de sa liste blanche
+ * (horloge et santé OnePlus) : constaté le 25/11/2026 à 6:25, vibrate_on à 1. Le
+ * mode coucher est donc quitté à l'alarme (WRITE_SECURE_SETTINGS accordée par adb).
  */
 final class AlarmVibrator {
     private static final String TAG = "DefiAlarm";
@@ -37,6 +42,7 @@ final class AlarmVibrator {
     /** 0,8 s de vibration, 1 s de pause, en boucle */
     private static final long[] PATTERN = { 0, 800, 1000 };
     private static final String VIBRATE_ON = "vibrate_on";
+    private static final String BEDTIME_MODE = "bedtime_mode";
     /** Sonnerie du début de l'alarme */
     private static final long RING_MS = 5_000L;
     private static final Handler HANDLER = new Handler(Looper.getMainLooper());
@@ -139,8 +145,35 @@ final class AlarmVibrator {
         }
     }
 
-    /** vibrate_on coupé (sommeil profond) : remis à 1, sinon l'alarme est refusée */
+    /**
+     * Vibrations coupées par le sommeil profond (vibrate_on=0) ou le mode coucher :
+     * rétablies, sinon l'alarme est refusée. Vrai si un réglage a été changé
+     */
     private static boolean allowVibration() {
+        boolean bedtime = leaveBedtime();
+        return allowVibrateOn() || bedtime;
+    }
+
+    private static boolean leaveBedtime() {
+        ContentResolver cr = app.getContentResolver();
+        if (Settings.Global.getInt(cr, BEDTIME_MODE, 0) == 0)
+            return false;
+        if (app.checkSelfPermission(android.Manifest.permission.WRITE_SECURE_SETTINGS)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            Log.w(TAG, "Mode coucher actif et WRITE_SECURE_SETTINGS refusée : alarme muette");
+            return false;
+        }
+        try {
+            Settings.Global.putInt(cr, BEDTIME_MODE, 0);
+            Log.i(TAG, "Mode coucher quitté pour l'alarme");
+            return true;
+        } catch (RuntimeException e) {
+            Log.w(TAG, "Impossible de quitter le mode coucher", e);
+            return false;
+        }
+    }
+
+    private static boolean allowVibrateOn() {
         ContentResolver cr = app.getContentResolver();
         if (Settings.System.getInt(cr, VIBRATE_ON, 1) != 0)
             return false;
@@ -171,5 +204,7 @@ final class AlarmVibrator {
         };
         app.getContentResolver().registerContentObserver(
                 Settings.System.getUriFor(VIBRATE_ON), false, vibrateOnObserver);
+        app.getContentResolver().registerContentObserver(
+                Settings.Global.getUriFor(BEDTIME_MODE), false, vibrateOnObserver);
     }
 }
