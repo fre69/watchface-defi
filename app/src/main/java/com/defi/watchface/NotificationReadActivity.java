@@ -40,7 +40,7 @@ public class NotificationReadActivity extends Activity {
         col.setOrientation(LinearLayout.VERTICAL);
         col.setGravity(Gravity.CENTER_HORIZONTAL);
         // Écran rond : marges larges en haut et en bas, où le cercle est étroit
-        col.setPadding(px(24), px(36), px(24), px(56));
+        col.setPadding(px(30), px(36), px(30), px(56));
 
         Bitmap icon = NotificationHolder.getIcon();
         if (icon != null) {
@@ -63,7 +63,7 @@ public class NotificationReadActivity extends Activity {
         }
 
         TextView body = text(NotificationHolder.getText(), 15, C_TEXT, false);
-        body.setGravity(Gravity.START);
+        // Centré : aligné à gauche, le début des lignes est rogné par le bord rond
         body.setPadding(0, px(8), 0, px(8));
         col.addView(body, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));

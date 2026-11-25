@@ -1252,6 +1252,9 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
                 notifTextLayout = StaticLayout.Builder
                         .obtain(text, 0, text.length(), pNotifText, textWidth)
                         .setAlignment(Layout.Alignment.ALIGN_CENTER)
+                        // Sans troncature, setMaxLines est ignoré : le texte passait sous le ✕.
+                        // « … » signale la suite, lisible d'un appui (NotificationReadActivity)
+                        .setEllipsize(TextUtils.TruncateAt.END)
                         .setMaxLines(4)
                         .build();
                 notifTextSrc = text;
