@@ -156,6 +156,20 @@ envoyer aux montres »), qu'aucune autre appli ne peut retirer, et Google Horlog
   arrêt de secours : `am start -a android.intent.action.DISMISS_ALARM --es
   android.intent.extra.alarm.SEARCH_MODE android.label --es android.intent.extra.alarm.MESSAGE "'Test'"`.
 
+### Débogage sans fil du téléphone gardé actif (`AdbWifiKeeper`, 25/11/2026)
+Le téléphone bascule seul entre les deux Wi-Fi de la maison, et Android coupe le débogage sans fil à
+chaque changement de réseau (`AdbDebuggingManager: Detected wifi network change. Disabling adbwifi`),
+port 5555 compris. `AdbWifiKeeper` (lancé par `PhoneNotificationListenerService`) le rétablit
+(`Settings.Global adb_wifi_enabled=1`) **seulement s'il était actif juste avant** (coupure à moins de
+10 s d'un changement de réseau ; une coupure à la main reste une coupure) et sur un **réseau de
+confiance** : un réseau où l'utilisateur active lui-même le débogage est appris (préférence privée
+`adb_wifi` / `trusted_ssids`, jamais de nom de réseau dans le dépôt, qui est public).
+- Permissions par adb : `pm grant com.defi.watchface.distance android.permission.WRITE_SECURE_SETTINGS`,
+  puis `ACCESS_FINE_LOCATION` et `ACCESS_BACKGROUND_LOCATION` (sans elles, le nom du réseau est masqué).
+  ⚠️ OxygenOS refuse `pm grant` (« user 2000 lacks GRANT_RUNTIME_PERMISSIONS ») tant que l'option
+  développeur « Désactiver la surveillance des autorisations » n'est pas active.
+- Sans `WRITE_SECURE_SETTINGS`, il ne fait rien (journal `DefiAdbWifi`).
+
 ### Témoin de lien téléphone coupé (`PhoneLink`)
 📵 rouge à gauche du pourcentage de batterie quand les notifications ne peuvent plus arriver :
 - **Téléphone injoignable** : l'appli `mobile` annonce la capability `defi_phone`

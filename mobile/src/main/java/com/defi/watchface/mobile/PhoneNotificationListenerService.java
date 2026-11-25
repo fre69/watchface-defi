@@ -65,6 +65,8 @@ public class PhoneNotificationListenerService extends NotificationListenerServic
         HeartbeatReceiver.schedule(this);
         // Ce service, que le système garde en vie, porte aussi le lien Home Assistant
         HaLink.get(this).start();
+        // Débogage sans fil rétabli après une bascule entre les Wi-Fi de la maison
+        AdbWifiKeeper.start(this);
         purgeStaleItems();
     }
 
