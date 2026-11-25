@@ -167,7 +167,8 @@ confiance** : un réseau où l'utilisateur active lui-même le débogage est app
 - Permissions par adb : `pm grant com.defi.watchface.distance android.permission.WRITE_SECURE_SETTINGS`,
   puis `ACCESS_FINE_LOCATION` et `ACCESS_BACKGROUND_LOCATION` (sans elles, le nom du réseau est masqué).
   ⚠️ OxygenOS refuse `pm grant` (« user 2000 lacks GRANT_RUNTIME_PERMISSIONS ») tant que l'option
-  développeur « Désactiver la surveillance des autorisations » n'est pas active.
+  développeur « Désactiver la surveillance des autorisations » n'est pas active. Elle ne sert qu'au
+  moment du `pm grant` : recoupée ensuite, les permissions restent accordées (vérifié le 25/11/2026).
 - Sans `WRITE_SECURE_SETTINGS`, il ne fait rien (journal `DefiAdbWifi`).
 
 ### Témoin de lien téléphone coupé (`PhoneLink`)
