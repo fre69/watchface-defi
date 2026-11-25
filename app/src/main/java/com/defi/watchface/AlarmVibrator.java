@@ -48,6 +48,13 @@ final class AlarmVibrator {
     private static final Handler HANDLER = new Handler(Looper.getMainLooper());
     private static final Runnable AUTO_STOP = AlarmVibrator::stopNow;
     private static final Runnable RING_STOP = AlarmVibrator::stopRing;
+    /**
+     * Le service de vibration relit les réglages de façon asynchrone : une
+     * vibration demandée aussitôt après les avoir rétablis est encore refusée
+     * (ignored_for_settings 8 ms après, vérifié le 25/11/2026)
+     */
+    private static final long SETTINGS_SETTLE_MS = 500L;
+    private static final Runnable VIBRATE_LATER = AlarmVibrator::vibrateIfRunning;
 
     private static Context app;
     private static Vibrator vibrator;
@@ -76,9 +83,12 @@ final class AlarmVibrator {
             screen.acquire(MAX_MS);
         }
 
-        allowVibration();
+        boolean changed = allowVibration();
         watchVibrateOn();
-        vibrate();
+        if (changed)
+            HANDLER.postDelayed(VIBRATE_LATER, SETTINGS_SETTLE_MS);
+        else
+            vibrate();
         // Fil principal : la sonnerie y est arrêtée, le fil de la DataLayer disparaît ensuite
         HANDLER.post(AlarmVibrator::playShortRing);
         HANDLER.removeCallbacks(AUTO_STOP);
@@ -91,6 +101,7 @@ final class AlarmVibrator {
     }
 
     private static synchronized void stopNow() {
+        HANDLER.removeCallbacks(VIBRATE_LATER);
         HANDLER.removeCallbacks(RING_STOP);
         stopRing();
         if (vibrateOnObserver != null) {
@@ -106,6 +117,11 @@ final class AlarmVibrator {
                 screen.release();
             screen = null;
         }
+    }
+
+    private static synchronized void vibrateIfRunning() {
+        if (vibrator != null)
+            vibrate();
     }
 
     private static void vibrate() {
@@ -197,8 +213,10 @@ final class AlarmVibrator {
             @Override
             public void onChange(boolean selfChange) {
                 synchronized (AlarmVibrator.class) {
-                    if (vibrator != null && allowVibration())
-                        vibrate();
+                    if (vibrator != null && allowVibration()) {
+                        HANDLER.removeCallbacks(VIBRATE_LATER);
+                        HANDLER.postDelayed(VIBRATE_LATER, SETTINGS_SETTLE_MS);
+                    }
                 }
             }
         };

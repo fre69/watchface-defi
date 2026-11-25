@@ -30,7 +30,7 @@ public final class NotificationHolder {
      * qui faisaient office de popup, sont coupées) : refermée sans appui, le message
      * reste non lu, avec la pastille
      */
-    public static final long PEEK_DURATION_MS = 10_000;
+    public static final long PEEK_DURATION_MS = 15_000;
     /**
      * Alarme qui sonne sur le téléphone : la bulle reste ouverte jusqu'à son arrêt
      * (élément supprimé), au plus ce délai si la suppression n'arrive jamais
@@ -196,7 +196,7 @@ public final class NotificationHolder {
     }
 
     /**
-     * Arrivée d'un message : la plus récente s'ouvre 10 s sans quitter la file,
+     * Arrivée d'un message : la plus récente s'ouvre 15 s sans quitter la file,
      * sauf si une bulle ouverte à la main (ou une alarme) est déjà à l'écran
      */
     public static void peek() {

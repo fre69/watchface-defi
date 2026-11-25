@@ -84,8 +84,8 @@ et les envoie à la montre via la **Wearable DataLayer API** (`play-services-wea
   le lever de poignet
 - **Message nouveau** (`NotificationHolder.set` renvoie faux pour un doublon absorbé ou une
   republication identique) : les notifications OHealth (popup et vibration) sont coupées depuis le
-  24/11/2026, le cadran prend le relais. **Bulle ouverte d'elle-même 10 s** (`NotificationHolder.peek`,
-  `PEEK_DURATION_MS`), écran tenu autant (`ScreenWaker.wake(ctx, false, 10 s)`) ; sans appui elle se
+  24/11/2026, le cadran prend le relais. **Bulle ouverte d'elle-même 15 s** (`NotificationHolder.peek`,
+  `PEEK_DURATION_MS`), écran tenu autant (`ScreenWaker.wake(ctx, false, 15 s)`) ; sans appui elle se
   referme et le message reste non lu, avec la pastille ; un appui en fait une bulle ouverte à la main
   (`confirmPeek`, 60 s). **Vibration** (`ScreenWaker.buzz`) : deux impulsions de 300 ms à pleine
   puissance (deux de 120 ms passaient inaperçues au poignet, 25/11/2026). ⚠️ Pas l'usage
@@ -124,6 +124,10 @@ envoyer aux montres »), qu'aucune autre appli ne peut retirer, et Google Horlog
   mode coucher à l'alarme : `adb shell pm grant com.defi.watchface.distance
   android.permission.WRITE_SECURE_SETTINGS` (sinon journal `DefiAlarm` : « WRITE_SECURE_SETTINGS
   refusée »). Ne pas déranger (`zen_mode`) n'est pas levé : à éviter la nuit si l'alarme doit vibrer
+- ⚠️ Le service de vibration relit les réglages **de façon asynchrone** : une vibration demandée 8 ms
+  après les avoir rétablis est encore refusée. `AlarmVibrator` attend 500 ms (`SETTINGS_SETTLE_MS`)
+  quand il a dû changer un réglage. Vérifié le 25/11/2026 : mode coucher et `vibrate_on=0` simulés,
+  alarme vibrée 500 ms après
 - ⚠️ **Le sommeil profond coupe les vibrations au réveil** : au redémarrage de 6:00,
   `DeepinSleepManager` passe `Settings.System vibrate_on` à 0 tant qu'il croit l'utilisateur endormi,
   et le service de vibration refuse alors tout, alarme comprise (`ignored_for_settings` dans
