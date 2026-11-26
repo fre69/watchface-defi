@@ -60,7 +60,10 @@ public class NotificationReadActivity extends Activity {
         app.setEllipsize(android.text.TextUtils.TruncateAt.END);
         head.addView(app);
         col.addView(head);
-        col.addView(text(NotificationHolder.getTitle(), 17, Color.WHITE, true));
+        TextView title = text(NotificationHolder.getTitle(), 17, Color.WHITE, true);
+        // Un peu d'air entre la ligne de l'appli et le titre
+        title.setPadding(0, px(6), 0, 0);
+        col.addView(title);
 
         Bitmap picture = NotificationHolder.getPicture();
         if (picture != null) {
