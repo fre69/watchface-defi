@@ -41,7 +41,7 @@ public class NotificationReadActivity extends Activity {
         col.setGravity(Gravity.CENTER_HORIZONTAL);
         // Écran rond : marge large en bas, où le cercle est étroit. En haut, juste ce qu'il
         // faut pour la ligne courte icône + appli (26/11/2026 : 36 dp et deux lignes avant)
-        col.setPadding(px(30), px(14), px(30), px(56));
+        col.setPadding(px(32), px(14), px(32), px(56));
 
         // Icône et nom de l'appli sur une seule ligne, comme dans la bulle
         LinearLayout head = new LinearLayout(this);
@@ -77,7 +77,9 @@ public class NotificationReadActivity extends Activity {
         }
 
         TextView body = text(NotificationHolder.getText(), 15, C_TEXT, false);
-        // Centré : aligné à gauche, le début des lignes est rogné par le bord rond
+        // Aligné à gauche, plus facile à lire ; les marges latérales limitent le rognage
+        // par le bord rond, et la page défile pour amener chaque ligne au milieu
+        body.setGravity(Gravity.START);
         body.setPadding(0, px(8), 0, px(8));
         col.addView(body, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
