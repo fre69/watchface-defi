@@ -375,9 +375,13 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         private Bitmap weatherIcon;
         private Bitmap pictureSrc;
         private Bitmap pictureScaled;
-        private String notifTextSrc;
-        private StaticLayout notifTextLayout;
-        private int notifTextMaxLines;
+        // Texte de la bulle coupé selon le rond (layoutRoundText)
+        private final java.util.ArrayList<String> roundLines = new java.util.ArrayList<>();
+        private final float[] roundX = new float[20];
+        private final float[] roundBase = new float[20];
+        private String roundSrc;
+        private float roundTop, roundBottom;
+        private int roundW;
         private final RectF iconRect = new RectF();
         private Bitmap carThumbSrc;
         private Bitmap carThumb;
@@ -1077,23 +1081,14 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
                 contentY += picture.getHeight() + 8;
             }
 
-            // Texte (word-wrap avec StaticLayout) : autant de lignes que la place le permet,
-            // jusqu'aux boutons de réponse ou au bouton du bas
+            // Texte : autant de lignes que la place le permet, jusqu'aux boutons de réponse
+            // ou au bouton du bas, chacune aussi large que le rond à sa hauteur
             boolean canReply = NotificationHolder.getReplyId() != null;
             float bottom = canReply ? y(CHIP_Y) - W * CHIP_H / 2f - 6
                     : y(CLOSE_Y) - W * CLOSE_RADIUS - 12;
-            Paint.FontMetrics fm = pNotifText.getFontMetrics();
-            float lineH = fm.descent - fm.ascent;
-            int maxLines = Math.max(1, (int) ((bottom - contentY) / lineH));
-            StaticLayout layout = notifTextLayout(NotificationHolder.getText(), maxLines);
-            if (layout != null) {
-                c.save();
-                if (canReply)
-                    c.clipRect(0, 0, W * 2, y(CHIP_Y) - W * CHIP_H / 2f - 6);
-                c.translate(CX - layout.getWidth() / 2f, contentY);
-                layout.draw(c);
-                c.restore();
-            }
+            layoutRoundText(NotificationHolder.getText(), contentY, bottom);
+            for (int i = 0; i < roundLines.size(); i++)
+                c.drawText(roundLines.get(i), roundX[i], roundBase[i], pNotifText);
             if (canReply)
                 drawReplyRow(c);
 
@@ -1259,26 +1254,64 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         }
 
         /** Mise en page du texte, refaite seulement quand le texte change */
-        private StaticLayout notifTextLayout(String text, int maxLines) {
-            if (text == null || text.isEmpty())
-                return null;
-            int textWidth = (int) (W * 0.75f);
-            if (!text.equals(notifTextSrc) || notifTextLayout.getWidth() != textWidth
-                    || notifTextMaxLines != maxLines) {
-                notifTextMaxLines = maxLines;
-                notifTextLayout = StaticLayout.Builder
-                        .obtain(text, 0, text.length(), pNotifText, textWidth)
-                        // Aligné à gauche, plus facile à lire : sur 75 % de la largeur, entre
-                        // le titre et le bouton du bas, toutes les lignes tiennent dans le rond
-                        .setAlignment(Layout.Alignment.ALIGN_NORMAL)
-                        // Sans troncature, setMaxLines est ignoré : le texte passait sous le ✕.
-                        // « … » signale la suite, lisible d'un appui (NotificationReadActivity)
-                        .setEllipsize(TextUtils.TruncateAt.END)
-                        .setMaxLines(maxLines)
-                        .build();
-                notifTextSrc = text;
+        /**
+         * Coupe le texte de la bulle en lignes qui épousent le rond (26/11/2026) : chaque
+         * ligne, alignée à gauche, commence sur le bord du cercle à sa hauteur (moins une
+         * marge) et en prend toute la largeur. Les lignes du milieu prennent plus de mots,
+         * celles du haut et du bas moins ; rien n'est rogné. La dernière ligne se termine
+         * par « … » s'il reste du texte (lisible en entier d'un appui).
+         */
+        private void layoutRoundText(String text, float top, float bottom) {
+            if (text == null)
+                text = "";
+            if (text.equals(roundSrc) && top == roundTop && bottom == roundBottom && W == roundW)
+                return;
+            roundSrc = text;
+            roundTop = top;
+            roundBottom = bottom;
+            roundW = W;
+            roundLines.clear();
+            Paint.FontMetrics fm = pNotifText.getFontMetrics();
+            float lineH = fm.descent - fm.ascent;
+            float r = W / 2f - W * 0.07f;
+            String rest = text.trim();
+            float base = top - fm.ascent;
+            int i = 0;
+            while (!rest.isEmpty() && base + fm.descent <= bottom && i < roundX.length) {
+                // Largeur du rond au plus étroit de la ligne (son haut ou son bas)
+                float dy = Math.max(Math.abs(base + fm.ascent - CY), Math.abs(base + fm.descent - CY));
+                float half = dy < r ? (float) Math.sqrt(r * r - dy * dy) : 0f;
+                half = Math.min(half, W * 0.43f);
+                float width = 2f * half;
+                boolean last = base + lineH + fm.descent > bottom;
+                int nl = rest.indexOf('\n');
+                String para = nl >= 0 ? rest.substring(0, nl) : rest;
+                int n = Math.max(1, pNotifText.breakText(para, true, width, null));
+                String line;
+                if (n >= para.length()) {
+                    line = para;
+                    rest = nl >= 0 ? rest.substring(nl + 1).trim() : "";
+                } else {
+                    // Coupure au dernier espace qui tient, sinon au milieu du mot
+                    int sp = para.lastIndexOf(' ', n);
+                    // Typographie française : « : ; ! ? » » ne commence jamais une ligne,
+                    // la coupure recule à l'espace précédente
+                    while (sp > 0 && sp + 1 < para.length() && ":;!?»".indexOf(para.charAt(sp + 1)) >= 0)
+                        sp = para.lastIndexOf(' ', sp - 1);
+                    if (sp <= 0)
+                        sp = n;
+                    line = para.substring(0, sp);
+                    rest = rest.substring(sp).trim();
+                }
+                if (last && !rest.isEmpty())
+                    line = TextUtils.ellipsize(line + " " + rest.replace('\n', ' '), pNotifText,
+                            width, TextUtils.TruncateAt.END).toString();
+                roundLines.add(line);
+                roundX[i] = CX - half;
+                roundBase[i] = base;
+                base += lineH;
+                i++;
             }
-            return notifTextLayout;
         }
 
         // --- PAINTS ---
