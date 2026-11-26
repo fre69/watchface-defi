@@ -1043,10 +1043,10 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
                 drawAlarmMode(c, z);
                 return;
             }
-            // En-tête resserré (26/11/2026) : heure, puis icône et nom de l'appli sur une
+            // En-tête resserré (26/11/2026) : heure en petit (déjà en grand sur le cadran), puis icône et nom de l'appli sur une
             // seule ligne, puis le titre ; la place gagnée va au texte
             String hhmm = fmt("%02d:%02d", z.getHour(), z.getMinute());
-            c.drawText(hhmm, CX, y(0.105f), pNotifTime);
+            c.drawText(hhmm, CX, y(0.09f), pNotifTime);
 
             // Icône à gauche du nom de l'appli, le tout centré
             Bitmap icon = NotificationHolder.getIcon();
@@ -1055,7 +1055,7 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             float iconSize = W * 0.07f, gap = W * 0.015f;
             float nameW = pNotifApp.measureText(appName);
             float rowW = (icon != null ? iconSize + gap : 0) + nameW;
-            float rowY = y(0.185f);
+            float rowY = y(0.16f);
             float x0 = CX - rowW / 2f;
             if (icon != null) {
                 iconRect.set(x0, rowY - iconSize * 0.82f, x0 + iconSize, rowY + iconSize * 0.18f);
@@ -1067,11 +1067,11 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             // Titre, tronqué à la largeur du rond à cette hauteur
             String title = TextUtils.ellipsize(NotificationHolder.getTitle(), pNotifTitle,
                     W * 0.80f, TextUtils.TruncateAt.END).toString();
-            c.drawText(title, CX, y(0.265f), pNotifTitle);
+            c.drawText(title, CX, y(0.235f), pNotifTitle);
 
             // Picture (photo de la notification)
             Bitmap picture = scaledPicture(NotificationHolder.getPicture());
-            float contentY = y(0.265f) + 12;
+            float contentY = y(0.235f) + 12;
             if (picture != null) {
                 c.drawBitmap(picture, CX - picture.getWidth() / 2f, contentY, null);
                 contentY += picture.getHeight() + 8;
@@ -1311,7 +1311,7 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
             setupText(pAmbBatt, COL_BLUE, 18, normal);
             pAmbBatt.setAlpha(128);
             // Notification mode settings
-            setupText(pNotifTime, COL_WHITE, 50, bold);
+            setupText(pNotifTime, COL_WHITE, 38, bold);
             setupText(pNotifApp, COL_VIOLET, 24, bold);
             setupText(pNotifTitle, COL_WHITE, 28, bold);
             pNotifText.setColor(COL_WHITE);
