@@ -39,16 +39,27 @@ public class NotificationReadActivity extends Activity {
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
         col.setGravity(Gravity.CENTER_HORIZONTAL);
-        // Écran rond : marges larges en haut et en bas, où le cercle est étroit
-        col.setPadding(px(30), px(36), px(30), px(56));
+        // Écran rond : marge large en bas, où le cercle est étroit. En haut, juste ce qu'il
+        // faut pour la ligne courte icône + appli (26/11/2026 : 36 dp et deux lignes avant)
+        col.setPadding(px(30), px(14), px(30), px(56));
 
+        // Icône et nom de l'appli sur une seule ligne, comme dans la bulle
+        LinearLayout head = new LinearLayout(this);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setGravity(Gravity.CENTER);
         Bitmap icon = NotificationHolder.getIcon();
         if (icon != null) {
             ImageView iv = new ImageView(this);
             iv.setImageBitmap(icon);
-            col.addView(iv, new LinearLayout.LayoutParams(px(26), px(26)));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(18), px(18));
+            lp.rightMargin = px(5);
+            head.addView(iv, lp);
         }
-        col.addView(text(NotificationHolder.getAppName(), 13, C_APP, true));
+        TextView app = text(NotificationHolder.getAppName(), 13, C_APP, true);
+        app.setSingleLine(true);
+        app.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        head.addView(app);
+        col.addView(head);
         col.addView(text(NotificationHolder.getTitle(), 17, Color.WHITE, true));
 
         Bitmap picture = NotificationHolder.getPicture();
