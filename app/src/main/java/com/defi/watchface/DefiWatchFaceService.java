@@ -377,6 +377,8 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         private Bitmap pictureScaled;
         private String notifTextSrc;
         private StaticLayout notifTextLayout;
+        private int notifTextMaxLines;
+        private final RectF iconRect = new RectF();
         private Bitmap carThumbSrc;
         private Bitmap carThumb;
         private Bitmap carViewSrc;
@@ -407,8 +409,8 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         private final Paint pAmbDate = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint pAmbBatt = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint pNotifTime = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint pNotifApp = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint pNotifTitle = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final TextPaint pNotifApp = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        private final TextPaint pNotifTitle = new TextPaint(Paint.ANTI_ALIAS_FLAG);
         private final TextPaint pNotifText = new TextPaint(Paint.ANTI_ALIAS_FLAG);
         private final Paint pCloseBg = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint pCloseX = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -1041,36 +1043,49 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
                 drawAlarmMode(c, z);
                 return;
             }
-            // Heure en petit en haut
+            // En-tête resserré (26/11/2026) : heure, puis icône et nom de l'appli sur une
+            // seule ligne, puis le titre ; la place gagnée va au texte
             String hhmm = fmt("%02d:%02d", z.getHour(), z.getMinute());
-            c.drawText(hhmm, CX, y(0.12f), pNotifTime);
+            c.drawText(hhmm, CX, y(0.105f), pNotifTime);
 
-            // Icône de l'app
+            // Icône à gauche du nom de l'appli, le tout centré
             Bitmap icon = NotificationHolder.getIcon();
+            String appName = TextUtils.ellipsize(NotificationHolder.getAppName(), pNotifApp,
+                    W * 0.55f, TextUtils.TruncateAt.END).toString();
+            float iconSize = W * 0.07f, gap = W * 0.015f;
+            float nameW = pNotifApp.measureText(appName);
+            float rowW = (icon != null ? iconSize + gap : 0) + nameW;
+            float rowY = y(0.185f);
+            float x0 = CX - rowW / 2f;
             if (icon != null) {
-                float iconSize = W * 0.10f;
-                c.drawBitmap(icon, CX - iconSize / 2f, y(0.18f), null);
+                iconRect.set(x0, rowY - iconSize * 0.82f, x0 + iconSize, rowY + iconSize * 0.18f);
+                c.drawBitmap(icon, null, iconRect, pBitmap);
+                x0 += iconSize + gap;
             }
+            c.drawText(appName, x0 + nameW / 2f, rowY, pNotifApp);
 
-            // Nom de l'app
-            String appName = NotificationHolder.getAppName();
-            c.drawText(appName, CX, y(0.32f), pNotifApp);
-
-            // Titre
-            String title = NotificationHolder.getTitle();
-            c.drawText(title, CX, y(0.42f), pNotifTitle);
+            // Titre, tronqué à la largeur du rond à cette hauteur
+            String title = TextUtils.ellipsize(NotificationHolder.getTitle(), pNotifTitle,
+                    W * 0.80f, TextUtils.TruncateAt.END).toString();
+            c.drawText(title, CX, y(0.265f), pNotifTitle);
 
             // Picture (photo de la notification)
             Bitmap picture = scaledPicture(NotificationHolder.getPicture());
-            float contentY = y(0.42f) + 12;
+            float contentY = y(0.265f) + 12;
             if (picture != null) {
                 c.drawBitmap(picture, CX - picture.getWidth() / 2f, contentY, null);
                 contentY += picture.getHeight() + 8;
             }
 
-            // Texte (word-wrap avec StaticLayout), coupé au-dessus des boutons de réponse
+            // Texte (word-wrap avec StaticLayout) : autant de lignes que la place le permet,
+            // jusqu'aux boutons de réponse ou au bouton du bas
             boolean canReply = NotificationHolder.getReplyId() != null;
-            StaticLayout layout = notifTextLayout(NotificationHolder.getText());
+            float bottom = canReply ? y(CHIP_Y) - W * CHIP_H / 2f - 6
+                    : y(CLOSE_Y) - W * CLOSE_RADIUS - 12;
+            Paint.FontMetrics fm = pNotifText.getFontMetrics();
+            float lineH = fm.descent - fm.ascent;
+            int maxLines = Math.max(1, (int) ((bottom - contentY) / lineH));
+            StaticLayout layout = notifTextLayout(NotificationHolder.getText(), maxLines);
             if (layout != null) {
                 c.save();
                 if (canReply)
@@ -1244,18 +1259,20 @@ public class DefiWatchFaceService extends ListenableWatchFaceService {
         }
 
         /** Mise en page du texte, refaite seulement quand le texte change */
-        private StaticLayout notifTextLayout(String text) {
+        private StaticLayout notifTextLayout(String text, int maxLines) {
             if (text == null || text.isEmpty())
                 return null;
             int textWidth = (int) (W * 0.75f);
-            if (!text.equals(notifTextSrc) || notifTextLayout.getWidth() != textWidth) {
+            if (!text.equals(notifTextSrc) || notifTextLayout.getWidth() != textWidth
+                    || notifTextMaxLines != maxLines) {
+                notifTextMaxLines = maxLines;
                 notifTextLayout = StaticLayout.Builder
                         .obtain(text, 0, text.length(), pNotifText, textWidth)
                         .setAlignment(Layout.Alignment.ALIGN_CENTER)
                         // Sans troncature, setMaxLines est ignoré : le texte passait sous le ✕.
                         // « … » signale la suite, lisible d'un appui (NotificationReadActivity)
                         .setEllipsize(TextUtils.TruncateAt.END)
-                        .setMaxLines(4)
+                        .setMaxLines(maxLines)
                         .build();
                 notifTextSrc = text;
             }
