@@ -60,7 +60,7 @@ et les envoie à la montre via la **Wearable DataLayer API** (`play-services-wea
   bas est un **›** tant qu'il en reste (« +N » à droite) et passe à la suivante, puis un ✕
 - **Bulle compacte** (26/11/2026) : heure en petit (38 px, déjà en grand sur le cadran), puis icône et nom de l'appli sur **une seule ligne**, puis
   le titre (tronqué « … ») ; le texte prend toute la hauteur restante jusqu'aux réponses rapides ou
-  au bouton du bas (nombre de lignes calculé, 7 sans réponses, au lieu de 4), terminé par « … »
+  au bouton du bas (nombre de lignes calculé, 7 sans réponses, au lieu de 4), aligné à gauche, terminé par « … »
 - **Lecture en entier** (`NotificationReadActivity`) : la bulle coupe le texte, et un
   cadran ne reçoit que des appuis (un glissement ouvre la zone de notifications du système, jamais
   le défilement). Un appui sur la bulle d'une notification du téléphone, hors boutons, ouvre une page
